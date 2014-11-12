@@ -6,6 +6,9 @@ import wxversion
 wxversion.select('2.8')
 import wx
 
+from matplotlib import use
+use('WXAgg')
+
 from pyoptools.all import *
 
 def main():
@@ -23,6 +26,7 @@ def main():
     S.ray_add(R)
     S.propagate()
     glPlotFrame(S)
+    #spot_diagram(ccd)
     app.MainLoop()
 
 if __name__ == '__main__':
