@@ -22,6 +22,23 @@ def Point2D(*args):
 Point3D = Point2D
 AngleVector = namedtuple('AngleVector', ['theta', 'phi'])
 
+class ScreenComponent(Component):
+    """
+    A square to represent the screen surface
+    """
+
+    def _get_hitlist(self):
+        return tuple(self.__d_surf.hit_list)
+
+    hit_list=property(_get_hitlist)
+
+    def __init__(self, size, transparent=True,*args,**kwargs):
+        Component.__init__(self, *args, **kwargs)
+        self.__d_surf= Plane(shape=Rectangular(size=size))
+        self.size=size
+        self.surflist["S1"]=(self.__d_surf,(0,0,0),(0,0,0))
+        self.material=1.
+
 class Screen(object):
     """
     Creates some geometry for the screen, in the correct location.
@@ -65,6 +82,9 @@ class Screen(object):
                self.position
         return pixel
 
+    def create_component(self):
+        return (ScreenComponent(self.size), self.position, self.direction)
+
 def create_shell(distance, principal_eye_vector, radius):
     """
     Create a very basic reflective screen that shoots rays in approximately the right direction
@@ -73,13 +93,7 @@ def create_shell(distance, principal_eye_vector, radius):
     shape = Circular(radius=radius)
     cohef = numpy.array([[0,0.0001],[0.0001,0.0002]]).copy(order='C')
     front_surface = TaylorPoly(shape=shape, cohef=cohef, reflectivity=1.0)
-    #rear_surface = TaylorPoly(shape=shape, cohef=cohef, reflectivity=1.0)
-    #edge = Cylinder(radius=radius,length=thickness)
-    #surflist=[(front_surface, (0, 0, 0),             (0, 0, 0)),
-    #          (rear_surface,  (0, 0, thickness),     (0, 0, 0)),
-    #          (edge,          (0, 0, thickness/2.0), (0, 0, 0))]
-    #component = Component(surflist=surflist, material=schott["BK7"])
-    component = Component(surflist=[(front_surface, (0, 0, 0),             (0, 0, 0))], material=schott["BK7"])
+    component = Component(surflist=[(front_surface, (0, 0, 0), (0, 0, 0))], material=schott["BK7"])
     MirrorShell = namedtuple('MirrorShell', ['component', 'position', 'direction'])
     return MirrorShell(component, (0, 0, -distance), (0, 0, 0))
 
@@ -126,8 +140,7 @@ def main():
     raylist = create_rays(screen)
 
     #assemble them into the system
-    #system = System(complist=[screen.create_component(), shell, detector], n=1)
-    system = System(complist=[shell, detector], n=1)
+    system = System(complist=[screen.create_component(), shell, detector], n=1)
     system.ray_add(raylist)
 
     #run the simulation
