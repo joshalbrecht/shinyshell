@@ -60,9 +60,10 @@ class Screen(object):
         :rtype: Point
         """
         point = self.pixel_distribution(vision_ray)
-        return (point[0] * self.size[0]/2.0 * self.side_vector) + \
+        pixel = (point[0] * self.size[0]/2.0 * self.side_vector) + \
                (point[1] * self.size[1]/2.0 * self.up_vector) + \
                self.position
+        return pixel
 
 def create_shell(distance, principal_eye_vector, radius):
     """
@@ -70,16 +71,17 @@ def create_shell(distance, principal_eye_vector, radius):
     """
     thickness = 5.0
     shape = Circular(radius=radius)
-    cohef = numpy.array([[0,0.01],[0.01,0.02]]).copy(order='C')
+    cohef = numpy.array([[0,0.0001],[0.0001,0.0002]]).copy(order='C')
     front_surface = TaylorPoly(shape=shape, cohef=cohef, reflectivity=1.0)
-    rear_surface = TaylorPoly(shape=shape, cohef=cohef, reflectivity=1.0)
-    edge = Cylinder(radius=radius,length=thickness)
-    surflist=[(front_surface, (0, 0, 0),             (0, 0, 0)),
-              (rear_surface,  (0, 0, thickness),     (0, 0, 0)),
-              (edge,          (0, 0, thickness/2.0), (0, 0, 0))]
-    component = Component(surflist=surflist, material=schott["BK7"])
+    #rear_surface = TaylorPoly(shape=shape, cohef=cohef, reflectivity=1.0)
+    #edge = Cylinder(radius=radius,length=thickness)
+    #surflist=[(front_surface, (0, 0, 0),             (0, 0, 0)),
+    #          (rear_surface,  (0, 0, thickness),     (0, 0, 0)),
+    #          (edge,          (0, 0, thickness/2.0), (0, 0, 0))]
+    #component = Component(surflist=surflist, material=schott["BK7"])
+    component = Component(surflist=[(front_surface, (0, 0, 0),             (0, 0, 0))], material=schott["BK7"])
     MirrorShell = namedtuple('MirrorShell', ['component', 'position', 'direction'])
-    return MirrorShell(component, (0, -distance, 0), (0, 0, 0))
+    return MirrorShell(component, (0, 0, -distance), (0, 0, 0))
 
 def create_detector():
     """
@@ -110,14 +112,14 @@ def main():
 
     #create the components
     screen_location = Point3D(0, 40.0, -20.0)
-    screen_direction = Point3D(0, -math.sin(screen_angle), math.cos(screen_angle))
+    screen_direction = Point3D(0, -math.sin(screen_angle), -math.cos(screen_angle))
     screen_size = Point2D(25.0, 25.0)
     def pixel_distribution(vec):
         r = vec.phi / FOV
         return Point2D(r*math.cos(vec.theta), r*math.sin(vec.theta))
     screen = Screen(screen_location, screen_direction, screen_size, pixel_distribution)
 
-    shell_distance = 40.0
+    shell_distance = 60.0
     shell_radius = 80.0
     shell = create_shell(shell_distance, principal_eye_vector, shell_radius)
     detector = create_detector()
