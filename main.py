@@ -107,11 +107,11 @@ def create_shell(distance, principal_eye_vector, radius):
     """
     thickness = 5.0
     shape = Circular(radius=radius)
-    cohef = numpy.array([[0, 0, 0.004],[0, 0, 0],[0.004, 0, 0]]).copy(order='C')
+    cohef = numpy.array([[0, 0, 0.0039],[0, 0, 0],[0.0034, 0, 0]]).copy(order='C')
     front_surface = TaylorPoly(shape=shape, cohef=cohef, reflectivity=1.0)
     component = Component(surflist=[(front_surface, (0, 0, 0), (0, 0, 0))], material=schott["BK7"])
     MirrorShell = namedtuple('MirrorShell', ['component', 'position', 'direction'])
-    return MirrorShell(component, (0, 0, -distance), (0, 0, 0))
+    return MirrorShell(component, (0, 20, -distance), (0, 0, 0))
 
 def create_detector():
     """
