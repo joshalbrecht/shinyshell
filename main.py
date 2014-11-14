@@ -14,8 +14,10 @@ use('WXAgg')
 
 from pyoptools.all import *
 from pyoptools.misc import cmisc
+from pyoptools.misc import pmisc
 
 import rotation_matrix
+
 
 def Point2D(*args):
     return numpy.array(args)
@@ -39,35 +41,49 @@ class ScreenComponent(Component):
         self.surflist["S1"]=(self.__d_surf,(0,0,0),(0,0,0))
         self.material=1.
 
+def create_transform_matrix_from_rotations(rotations):
+    c = numpy.cos(rotations)
+    s = numpy.sin(rotations)
+
+    rx = numpy.array([[1. , 0., 0.],
+    [0. , c[0],-s[0]],
+    [0. , s[0], c[0]]])
+
+    ry = numpy.array([[ c[1], 0., s[1]],
+    [ 0., 1., 0.],
+    [-s[1], 0., c[1]]])
+
+    rz = numpy.array([[ c[2],-s[2], 0.],
+    [ s[2], c[2], 0.],
+    [ 0., 0., 1.]])
+
+    return numpy.dot(rz, numpy.dot(ry, rx))
+
 class Screen(object):
     """
     Creates some geometry for the screen, in the correct location.
 
     :attr position: the location of the center of the screen
     :type position: Point3D
-    :attr direction: the direction the screen is facing
-    :type direction: Point3D
+    :attr rotations: (rx,ry,yz). Pretty dumb way of thinking about things but whatever.
+    :type rotations: Point3D
     :attr size: the width and height of the screen
     :type size: Point2D
     :attr pixel_distribution:
     :type pixel_distribution: function(AngleVector) -> Point2D (distributed in the range [-1,-1] to [1,1])
     """
 
-    def __init__(self, location, direction, size, pixel_distribution):
+    def __init__(self, location, rotations, size, pixel_distribution):
         self.position = location
-        self.direction = direction
+        self.rotations = rotations
         self.size = size
         self.pixel_distribution = pixel_distribution
 
-        original_direction = Point3D(0.0, 0.0, -1.0)
-        rot_mat = numpy.array((
-            numpy.array((0.0, 0.0, 0.0)),
-            numpy.array((0.0, 0.0, 0.0)),
-            numpy.array((0.0, 0.0, 0.0))
-            ))
-        rotation_matrix.R_2vect(rot_mat, original_direction, direction)
+        rot_mat = create_transform_matrix_from_rotations(self.rotations)
+
         self.side_vector = rot_mat.dot(Point3D(1.0, 0.0, 0.0))
         self.up_vector = rot_mat.dot(Point3D(0.0, 1.0, 0.0))
+        self.direction = rot_mat.dot(Point3D(0.0, 0.0, -1.0))
 
     def vision_ray_to_pixel(self, vision_ray):
         """
@@ -83,7 +99,7 @@ class Screen(object):
         return pixel
 
     def create_component(self):
-        return (ScreenComponent(self.size), self.position, self.direction)
+        return (ScreenComponent(self.size), self.position, self.rotations)
 
 def create_shell(distance, principal_eye_vector, radius):
     """
@@ -126,12 +142,12 @@ def main():
 
     #create the components
     screen_location = Point3D(0, 40.0, -20.0)
-    screen_direction = Point3D(0, -math.sin(screen_angle), -math.cos(screen_angle))
+    screen_rotation = Point3D(-screen_angle, 0, 0)
     screen_size = Point2D(25.0, 25.0)
     def pixel_distribution(vec):
         r = vec.phi / FOV
         return Point2D(r*math.cos(vec.theta), r*math.sin(vec.theta))
-    screen = Screen(screen_location, screen_direction, screen_size, pixel_distribution)
+    screen = Screen(screen_location, screen_rotation, screen_size, pixel_distribution)
 
     shell_distance = 60.0
     shell_radius = 80.0
