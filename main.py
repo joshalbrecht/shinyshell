@@ -24,6 +24,29 @@ def Point2D(*args):
 Point3D = Point2D
 AngleVector = namedtuple('AngleVector', ['theta', 'phi'])
 
+class PointComponent(Component):
+    """
+    A bunch of squares, just for visualizing points
+    """
+
+    def _get_hitlist(self):
+        return tuple()
+
+    hit_list=property(_get_hitlist)
+
+    def __init__(self, location, transparent=True,*args,**kwargs):
+        Component.__init__(self, *args, **kwargs)
+        size = numpy.array((1, 1))
+        self.size=size
+        self.location = location
+        self.surflist["S1"] = (Plane(shape=Rectangular(size=size)), (0, 0, 0), (0, 0, 0))
+        self.surflist["S2"] = (Plane(shape=Rectangular(size=size)), (0, 0, 0), (math.pi/2.0, 0, 0))
+        self.surflist["S3"] = (Plane(shape=Rectangular(size=size)), (0, 0, 0), (0, math.pi/2.0, 0))
+        self.material = 1.0
+
+    def component(self):
+        return (self, self.location, (0,0,0))
+
 class ScreenComponent(Component):
     """
     A square to represent the screen surface
@@ -111,7 +134,7 @@ def create_shell(distance, principal_eye_vector, radius):
     front_surface = TaylorPoly(shape=shape, cohef=cohef, reflectivity=1.0)
     component = Component(surflist=[(front_surface, (0, 0, 0), (0, 0, 0))], material=schott["BK7"])
     MirrorShell = namedtuple('MirrorShell', ['component', 'position', 'direction'])
-    return MirrorShell(component, (0, 20, -distance), (0, 0, 0))
+    return MirrorShell(component, (0, 0, -distance), (0, 0, 0))
 
 def create_detector():
     """
@@ -155,7 +178,11 @@ def main():
     raylist = create_rays(screen, fov)
 
     #assemble them into the system
-    system = System(complist=[screen.create_component(), shell, detector], n=1)
+    system = System(complist=[screen.create_component(), shell, detector,
+                              PointComponent((10, 10, 0)).component(),
+                              PointComponent((20, 20, 0)).component(),
+                              PointComponent((30, 30, 0)).component()
+                              ], n=1)
     system.ray_add(raylist)
 
     #run the simulation
