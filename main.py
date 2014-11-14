@@ -122,11 +122,10 @@ def create_detector():
     Detector = namedtuple('Detector', ['ccd', 'position', 'direction'])
     return Detector(ccd, (0, 0, 0), (0, 0, 0))
 
-def create_rays(screen):
+def create_rays(screen, fov):
     """
     For now, just make a bunch of rays coming off of the screen.
     """
-    fov = math.pi/2.0
     return [Ray(pos=screen.vision_ray_to_pixel(AngleVector(theta, phi)), dir=screen.direction) \
             for (theta, phi) in \
             [(0, 0), (0, fov), (math.pi/2.0, fov), (math.pi, fov), (3.0*math.pi/2.0, fov)]]
@@ -136,7 +135,7 @@ def main():
     app = wx.PySimpleApp()
 
     #system assumptions
-    FOV = 45.0
+    fov = math.pi / 4.0
     screen_angle = math.pi / 8.0
     principal_eye_vector = Point3D(0.0, 0.0, -1.0)
 
@@ -145,7 +144,7 @@ def main():
     screen_rotation = Point3D(-screen_angle, 0, 0)
     screen_size = Point2D(25.0, 25.0)
     def pixel_distribution(vec):
-        r = vec.phi / FOV
+        r = vec.phi / fov
         return Point2D(r*math.cos(vec.theta), r*math.sin(vec.theta))
     screen = Screen(screen_location, screen_rotation, screen_size, pixel_distribution)
 
@@ -153,7 +152,7 @@ def main():
     shell_radius = 80.0
     shell = create_shell(shell_distance, principal_eye_vector, shell_radius)
     detector = create_detector()
-    raylist = create_rays(screen)
+    raylist = create_rays(screen, fov)
 
     #assemble them into the system
     system = System(complist=[screen.create_component(), shell, detector], n=1)
@@ -163,26 +162,6 @@ def main():
     system.propagate()
     glPlotFrame(system)
     spot_diagram(detector.ccd)
-    app.MainLoop()
-
-def tutorial():
-    app = wx.PySimpleApp()
-    shape=Circular(radius=20.)
-    cohef = numpy.array([[0,0.01],[0.01,0.02]]).copy(order='C')
-    S1=TaylorPoly(shape=shape, cohef=cohef, reflectivity=1.0)
-    S2=Spherical(curvature=1/200., shape=Circular(radius=20.))
-    S3=Cylinder(radius=20,length=6.997)
-    surflist=[(S1, (0, 0, -5), (0, 0, 0)),
-              (S2, (0, 0, 5), (0, math.pi, 0)),
-              (S3,(0,0,.509),(0,0,0))]
-    L1=Component(surflist=surflist, material=schott["BK7"])
-    ccd=CCD(size=(100,100), transparent=False)
-    S=System(complist=[(L1, (0, 0, 20), (0, 0, 0)),(ccd, (0, 0, 150), (0, 0, 0))], n=1)
-    R=[Ray(pos=(0, 0, 0), dir=(0, 0, 1)), Ray(pos=(10, 0, 0), dir=(0, 0, 1)), Ray(pos=(-10, 0, 0), dir=(0, 0, 1)),Ray(pos=(0, 10, 0), dir=(0, 0, 1)), Ray(pos=(0, -10, 0), dir=(0, 0, 1)),]
-    S.ray_add(R)
-    S.propagate()
-    glPlotFrame(S)
-    spot_diagram(ccd)
     app.MainLoop()
 
 if __name__ == '__main__':
