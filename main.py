@@ -4,6 +4,10 @@ import math
 from collections import namedtuple
 
 import numpy
+import numpy.linalg
+
+from OpenGL.GL import *
+from OpenGL.GLU import *
 
 import wxversion
 wxversion.select('2.8')
@@ -12,9 +16,39 @@ import wx
 from matplotlib import use
 use('WXAgg')
 
+#wheee, monkey patches:
+points_to_draw = []
+import wxRayTrace.gui.glplotframe
+def DrawPoint(self, point):
+    rc, gc, bc=(1.0, 1.0, 1.0)
+    size = 1.0
+    glBegin(GL_LINES)
+    glColor4f(rc, gc, bc, 1.)
+    glVertex3f( point[0]+size, point[1], point[2])
+    glVertex3f( point[0]-size, point[1], point[2])
+    glVertex3f( point[0], point[1]+size, point[2])
+    glVertex3f( point[0], point[1]-size, point[2])
+    glVertex3f( point[0], point[1], point[2]+size)
+    glVertex3f( point[0], point[1], point[2]-size)
+    glEnd()
+
+def new_draw(self):
+    #Draw Rays
+    #print "RRRRRRRRRRRRRRRRRRRRRRxR", self.os
+    if self.os != None:
+        for i in self.os.prop_ray:
+                self.DrawRay(i)
+        #Draw Components
+        for comp in self.os.complist:
+                self.DrawComp(comp)
+        for point in points_to_draw:
+                DrawPoint(self, point)
+wxRayTrace.gui.glplotframe.glCanvas.DrawGLL = new_draw
+
 from pyoptools.all import *
 from pyoptools.misc import cmisc
 from pyoptools.misc import pmisc
+import scipy.integrate
 
 import rotation_matrix
 
@@ -153,6 +187,80 @@ def create_rays(screen, fov):
             for (theta, phi) in \
             [(0, 0), (0, fov), (math.pi/2.0, fov), (math.pi, fov), (3.0*math.pi/2.0, fov)]]
 
+#TODO: probably a good idea to cache these results...
+def _get_theta_normal(principal_ray, theta):
+    """
+    Simply the normal to the plane defined by theta and the principal ray
+    """
+    base_principal_ray = Point3D(0.0, 0.0, -1.0)
+    ray_rotation = numpy.zeros((3, 3))
+    rotation_matrix.R_2vect(ray_rotation, base_principal_ray, principal_ray)
+    base_theta_ray = Point3D(math.cos(theta), math.sin(theta), 0)
+    return ray_rotation.dot(base_theta_ray)
+
+def _normalize(a):
+    return a / numpy.linalg.norm(a)
+
+def _normalized_vector_angle(v1_u, v2_u):
+    """ Returns the angle in radians between normal vectors 'v1_u' and 'v2_u'::
+
+            >>> angle_between((1, 0, 0), (0, 1, 0))
+            1.5707963267948966
+            >>> angle_between((1, 0, 0), (1, 0, 0))
+            0.0
+            >>> angle_between((1, 0, 0), (-1, 0, 0))
+            3.141592653589793
+    """
+    angle = numpy.arccos(numpy.dot(v1_u, v2_u))
+    if numpy.isnan(angle):
+        if (v1_u == v2_u).all():
+            return 0.0
+        else:
+            return numpy.pi
+    return angle
+
+
+def create_arc(screen, principal_ray, distance, theta):
+    """
+    Given a screen, principal ray, distance, and theta, calculate the shape of the screen such that
+    every vision ray gives a correct reflection to the corresponding pixel.
+    """
+
+    #this function defines the derivative of the surface at any given point.
+    #simply the intersection of the theta plane and the required surface plane at that point
+    #if there is no way to bounce to the front of the screen, the derivative is just 0
+    theta_normal = _get_theta_normal(principal_ray, theta)
+    def f(point, t):
+        #TODO: return [0,0,0] if the point is not in front of the screen (since it would not be visible at all, we should stop tracing this surface)
+        eye_to_point_vec = _normalize(point)
+        phi = _normalized_vector_angle(principal_ray, eye_to_point_vec)
+        pixel_point = screen.vision_ray_to_pixel(AngleVector(theta, phi))
+        point_to_eye_vec = eye_to_point_vec * -1
+        point_to_screen_vec = _normalize(pixel_point - point)
+        surface_normal = _normalize((point_to_screen_vec + point_to_eye_vec) / 2.0)
+        #TODO: might want to reverse the order of these just to be more intuitive. I feel like positive t should move from the center outward
+        derivative = numpy.cross(surface_normal, theta_normal)
+        return derivative
+
+    #initial point is distance away, along the principal ray
+    point0 = principal_ray * distance
+
+    #the set of t values for which we would like to have output.
+    #t is a measure of distance along the surface of the screen.
+    #TODO: could do a better job of estimating how much t is required
+    #more t means that we're wasting time, less t means we might not quite finish defining the whole surface
+    #could probably be much more intelligent about this
+    t_step = 0.1
+    max_t = 100
+    t_values = np.arange(0, max_t, t_step)
+
+    #actually perform the numerical integration.
+    result = scipy.integrate.odeint(f, point0, t_values)
+    #convert the result into a more useful form
+    #result = result[:, 0]
+
+    return result
+
 def main():
     #create the main app
     app = wx.PySimpleApp()
@@ -177,12 +285,16 @@ def main():
     detector = create_detector()
     raylist = create_rays(screen, fov)
 
+    #create a single arc along the surface (for debugging this function)
+    arc_theta = 0.0
+    arc = create_arc(screen, principal_eye_vector, shell_distance, arc_theta)
+    #visualize the arc
+    arc = arc[0::100]
+    for point in arc:
+        points_to_draw.append(point)
+
     #assemble them into the system
-    system = System(complist=[screen.create_component(), shell, detector,
-                              PointComponent((10, 10, 0)).component(),
-                              PointComponent((20, 20, 0)).component(),
-                              PointComponent((30, 30, 0)).component()
-                              ], n=1)
+    system = System(complist=[screen.create_component(), shell, detector], n=1)
     system.ray_add(raylist)
 
     #run the simulation
