@@ -1,5 +1,6 @@
 #!/user/bin/python
 
+import itertools
 import math
 from collections import namedtuple
 
@@ -158,13 +159,19 @@ class Screen(object):
     def create_component(self):
         return (ScreenComponent(self.size), self.position, self.rotations)
 
-def create_shell(distance, principal_eye_vector, radius):
+def create_shell(distance, principal_eye_vector, radius, coefficients):
     """
     Create a very basic reflective screen that shoots rays in approximately the right direction
     """
     thickness = 5.0
     shape = Circular(radius=radius)
-    cohef = numpy.array([[0, 0, 0.0039],[0, 0, 0],[0.0034, 0, 0]]).copy(order='C')
+    order = int(numpy.sqrt(len(coefficients)))
+    cohef = []
+    for i in range(0, order):
+        cohef.append(coefficients[i*order:(i+1)*order])
+    cohef = numpy.array(cohef).copy(order='C')
+    #cohef = numpy.array([coefficients[:4],coefficients[4:8],coefficients[8:12],coefficients[12:]]).copy(order='C')
+    #cohef = numpy.array([[0, 0, 0.0039],[0, 0, 0],[0.0034, 0, 0]]).copy(order='C')
     front_surface = TaylorPoly(shape=shape, cohef=cohef, reflectivity=1.0)
     component = Component(surflist=[(front_surface, (0, 0, 0), (0, 0, 0))], material=schott["BK7"])
     MirrorShell = namedtuple('MirrorShell', ['component', 'position', 'direction'])
@@ -252,7 +259,7 @@ def create_arc(screen, principal_ray, distance, theta):
     #could probably be much more intelligent about this
     t_step = 0.1
     max_t = 100
-    t_values = np.arange(0, max_t, t_step)
+    t_values = numpy.arange(0, max_t, t_step)
 
     #actually perform the numerical integration.
     result = scipy.integrate.odeint(f, point0, t_values)
@@ -260,6 +267,15 @@ def create_arc(screen, principal_ray, distance, theta):
     #result = result[:, 0]
 
     return result
+
+def polyfit2d(x, y, z, order=3):
+    ncols = (order + 1)**2
+    G = np.zeros((x.size, ncols))
+    ij = itertools.product(range(order+1), range(order+1))
+    for k, (i,j) in enumerate(ij):
+        G[:,k] = x**i * y**j
+    m, _, _, _ = numpy.linalg.lstsq(G, z)
+    return m
 
 def main():
     #create the main app
@@ -281,17 +297,25 @@ def main():
 
     shell_distance = 60.0
     shell_radius = 80.0
-    shell = create_shell(shell_distance, principal_eye_vector, shell_radius)
+
+    #create number of different arcs along the surface (for debugging this function)
+    for arc_theta in numpy.arange(0, 2.0 * math.pi, math.pi / 15.0):
+        arc = create_arc(screen, principal_eye_vector, shell_distance, arc_theta)
+        #visualize the arc
+        arc = arc[0::100]
+        for point in arc:
+            points_to_draw.append(point)
+
+    #fit the polynomial to the points:
+    x = numpy.array([p[0] for p in points_to_draw])
+    y = numpy.array([p[1] for p in points_to_draw])
+    z = numpy.array([p[2] for p in points_to_draw])
+    coefficients = polyfit2d(x, y, z, order=10)
+
+    shell = create_shell(shell_distance, principal_eye_vector, shell_radius, coefficients)
     detector = create_detector()
     raylist = create_rays(screen, fov)
 
-    #create a single arc along the surface (for debugging this function)
-    arc_theta = 0.0
-    arc = create_arc(screen, principal_eye_vector, shell_distance, arc_theta)
-    #visualize the arc
-    arc = arc[0::100]
-    for point in arc:
-        points_to_draw.append(point)
 
     #assemble them into the system
     system = System(complist=[screen.create_component(), shell, detector], n=1)
