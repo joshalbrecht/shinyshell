@@ -60,7 +60,7 @@ class MeshSurface(Surface):
                 triangles.InsertNextCell(triangle)
 
                 # Triangle 2
-                points.InsertNextPoint(arc[j+1][0], arc[j+1][1], arc[j+1][2])
+                points.InsertNextPoint(arc[j][0], arc[j][1], arc[j][2])
                 points.InsertNextPoint(parc[j+1][0], parc[j+1][1], parc[j+1][2])
                 points.InsertNextPoint(parc[j][0], parc[j][1], parc[j][2])
 
@@ -94,6 +94,11 @@ class MeshSurface(Surface):
         output.Update();
         cellData = output.GetCellData();
         self.normals = cellData.GetNormals();
+
+        stlWriter = vtk.vtkSTLWriter()
+        stlWriter.SetFileName("temp.stl")
+        stlWriter.SetInput(self.mesh)
+        stlWriter.Write()
 
         self.caster = vtk.vtkOBBTree()
         #set the 'mesh' as the caster's dataset

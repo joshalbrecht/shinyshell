@@ -169,7 +169,7 @@ def create_shell(distance, principal_eye_vector, radius, arcs):
     front_surface = MeshSurface(arcs, shape=shape, reflectivity=1.0)
     component = Component(surflist=[(front_surface, (0, 0, 0), (0, 0, 0))], material=schott["BK7"])
     MirrorShell = namedtuple('MirrorShell', ['component', 'position', 'direction'])
-    return MirrorShell(component, (0, 0, -distance), (0, 0, 0))
+    return MirrorShell(component, (0, 0, 0), (0, 0, 0))
 
 def create_detector():
     """
@@ -281,7 +281,7 @@ def main():
     screen = Screen(screen_location, screen_rotation, screen_size, pixel_distribution)
 
     shell_distance = 60.0
-    shell_radius = 80.0
+    shell_radius = 40.0#80.0
 
     #create number of different arcs along the surface (for debugging this function)
     arcs = []
