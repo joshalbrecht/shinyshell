@@ -85,12 +85,12 @@ class MeshSurface(Surface):
         cleanPolyData = vtk.vtkCleanPolyData()
         cleanPolyData.SetInput(trianglePolyData)
         cleanPolyData.Update()
-        self.mesh = cleanPolyData.GetOutput()
+        #self.mesh = cleanPolyData.GetOutput()
 
-        #smooth_loop = vtk.vtkLoopSubdivisionFilter()
-        #smooth_loop.SetNumberOfSubdivisions(3)
-        #smooth_loop.SetInput(cleanPolyData.GetOutput())
-        #self.mesh = smooth_loop.GetOutput()
+        smooth_loop = vtk.vtkLoopSubdivisionFilter()
+        smooth_loop.SetNumberOfSubdivisions(3)
+        smooth_loop.SetInput(cleanPolyData.GetOutput())
+        self.mesh = smooth_loop.GetOutput()
 
         normals = vtk.vtkPolyDataNormals()
         normals.SetInput(self.mesh)
@@ -100,10 +100,10 @@ class MeshSurface(Surface):
         cellData = output.GetCellData();
         self.normals = cellData.GetNormals();
 
-        #stlWriter = vtk.vtkSTLWriter()
-        #stlWriter.SetFileName("temp.stl")
-        #stlWriter.SetInput(self.mesh)
-        #stlWriter.Write()
+        stlWriter = vtk.vtkSTLWriter()
+        stlWriter.SetFileName("temp.stl")
+        stlWriter.SetInput(self.mesh)
+        stlWriter.Write()
 
         self.caster = vtk.vtkOBBTree()
         #set the 'mesh' as the caster's dataset

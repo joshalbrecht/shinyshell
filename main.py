@@ -184,10 +184,17 @@ def create_rays(screen, fov):
     """
     For now, just make a bunch of rays coming off of the screen.
     """
-    return [Ray(pos=screen.vision_ray_to_pixel(AngleVector(theta, phi)), dir=screen.direction) \
-            for (theta, phi) in \
-            #[(0, 0), (0, fov), (math.pi/2.0, fov), (math.pi, fov), (3.0*math.pi/2.0, fov)]]
-        [(0, 0)]]
+    #return [Ray(pos=screen.vision_ray_to_pixel(AngleVector(theta, phi)), dir=screen.direction) \
+    #        for (theta, phi) in \
+    #        #[(0, 0), (0, fov), (math.pi/2.0, fov), (math.pi, fov), (3.0*math.pi/2.0, fov)]]
+    #    [(0, 0)]]
+
+    fov = fov*0.99
+    return [Ray(pos=ray, dir=ray) for ray in [(0.0, 0.0, -1.0),
+        (math.sin(fov), 0.0, -math.cos(fov)),
+        (-math.sin(fov), 0.0, -math.cos(fov)),
+        (0.0, math.sin(fov), -math.cos(fov)),
+        (0.0, -math.sin(fov), -math.cos(fov))]]
 
 #TODO: probably a good idea to cache these results...
 def _get_theta_normal(principal_ray, theta):
@@ -241,7 +248,7 @@ def create_arc(screen, principal_ray, distance, theta):
         point_to_screen_vec = _normalize(pixel_point - point)
         surface_normal = _normalize((point_to_screen_vec + point_to_eye_vec) / 2.0)
         #TODO: might want to reverse the order of these just to be more intuitive. I feel like positive t should move from the center outward
-        derivative = numpy.cross(surface_normal, theta_normal)
+        derivative = _normalize(numpy.cross(surface_normal, theta_normal))
         return derivative
 
     #initial point is distance away, along the principal ray
@@ -252,9 +259,9 @@ def create_arc(screen, principal_ray, distance, theta):
     #TODO: could do a better job of estimating how much t is required
     #more t means that we're wasting time, less t means we might not quite finish defining the whole surface
     #could probably be much more intelligent about this
-    t_step = 0.1
+    t_step = 0.2
     max_t = 100
-    t_values = numpy.arange(0, max_t, t_step)
+    t_values = numpy.array(list(numpy.arange(0, 10.0, 0.5)) + list(numpy.arange(10.1, max_t, t_step)))
 
     #actually perform the numerical integration.
     result = scipy.integrate.odeint(f, point0, t_values)
@@ -282,11 +289,11 @@ def main():
     screen = Screen(screen_location, screen_rotation, screen_size, pixel_distribution)
 
     shell_distance = 60.0
-    shell_radius = 40.0#80.0
+    shell_radius = 60.0#80.0
 
     #create number of different arcs along the surface (for debugging this function)
     arcs = []
-    for arc_theta in numpy.arange(0, 2.0 * math.pi, math.pi / 200.0):
+    for arc_theta in numpy.arange(0, 2.0 * math.pi, math.pi / 20.0):
         arc = create_arc(screen, principal_eye_vector, shell_distance, arc_theta)
         #visualize the arc
         #arc = arc[0::10]
