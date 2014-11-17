@@ -52,6 +52,7 @@ from pyoptools.misc import pmisc
 import scipy.integrate
 
 import rotation_matrix
+from meshsurface import MeshSurface
 
 
 def Point2D(*args):
@@ -159,20 +160,13 @@ class Screen(object):
     def create_component(self):
         return (ScreenComponent(self.size), self.position, self.rotations)
 
-def create_shell(distance, principal_eye_vector, radius, coefficients):
+def create_shell(distance, principal_eye_vector, radius, arcs):
     """
-    Create a very basic reflective screen that shoots rays in approximately the right direction
+    Create a triangle mesh approximation of the screen
     """
     thickness = 5.0
     shape = Circular(radius=radius)
-    order = int(numpy.sqrt(len(coefficients)))
-    cohef = []
-    for i in range(0, order):
-        cohef.append(coefficients[i*order:(i+1)*order])
-    cohef = numpy.array(cohef).copy(order='C')
-    #cohef = numpy.array([coefficients[:4],coefficients[4:8],coefficients[8:12],coefficients[12:]]).copy(order='C')
-    #cohef = numpy.array([[0, 0, 0.0039],[0, 0, 0],[0.0034, 0, 0]]).copy(order='C')
-    front_surface = TaylorPoly(shape=shape, cohef=cohef, reflectivity=1.0)
+    front_surface = MeshSurface(arcs, shape=shape, reflectivity=1.0)
     component = Component(surflist=[(front_surface, (0, 0, 0), (0, 0, 0))], material=schott["BK7"])
     MirrorShell = namedtuple('MirrorShell', ['component', 'position', 'direction'])
     return MirrorShell(component, (0, 0, -distance), (0, 0, 0))
@@ -268,15 +262,6 @@ def create_arc(screen, principal_ray, distance, theta):
 
     return result
 
-def polyfit2d(x, y, z, order=3):
-    ncols = (order + 1)**2
-    G = np.zeros((x.size, ncols))
-    ij = itertools.product(range(order+1), range(order+1))
-    for k, (i,j) in enumerate(ij):
-        G[:,k] = x**i * y**j
-    m, _, _, _ = numpy.linalg.lstsq(G, z)
-    return m
-
 def main():
     #create the main app
     app = wx.PySimpleApp()
@@ -299,20 +284,16 @@ def main():
     shell_radius = 80.0
 
     #create number of different arcs along the surface (for debugging this function)
+    arcs = []
     for arc_theta in numpy.arange(0, 2.0 * math.pi, math.pi / 15.0):
         arc = create_arc(screen, principal_eye_vector, shell_distance, arc_theta)
         #visualize the arc
         arc = arc[0::100]
+        arcs.append(arc)
         for point in arc:
             points_to_draw.append(point)
 
-    #fit the polynomial to the points:
-    x = numpy.array([p[0] for p in points_to_draw])
-    y = numpy.array([p[1] for p in points_to_draw])
-    z = numpy.array([p[2] for p in points_to_draw])
-    coefficients = polyfit2d(x, y, z, order=10)
-
-    shell = create_shell(shell_distance, principal_eye_vector, shell_radius, coefficients)
+    shell = create_shell(shell_distance, principal_eye_vector, shell_radius, arcs)
     detector = create_detector()
     raylist = create_rays(screen, fov)
 
