@@ -286,13 +286,13 @@ def main():
 
     #create number of different arcs along the surface (for debugging this function)
     arcs = []
-    for arc_theta in numpy.arange(0, 2.0 * math.pi, math.pi / 15.0):
+    for arc_theta in numpy.arange(0, 2.0 * math.pi, math.pi / 200.0):
         arc = create_arc(screen, principal_eye_vector, shell_distance, arc_theta)
         #visualize the arc
-        arc = arc[0::100]
+        #arc = arc[0::10]
         arcs.append(arc)
-        for point in arc:
-            points_to_draw.append(point)
+        #for point in arc:
+        #    points_to_draw.append(point)
 
     shell = create_shell(shell_distance, principal_eye_vector, shell_radius, arcs)
     detector = create_detector()
