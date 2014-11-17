@@ -190,11 +190,19 @@ def create_rays(screen, fov):
     #    [(0, 0)]]
 
     fov = fov*0.99
-    return [Ray(pos=ray, dir=ray) for ray in [(0.0, 0.0, -1.0),
-        (math.sin(fov), 0.0, -math.cos(fov)),
-        (-math.sin(fov), 0.0, -math.cos(fov)),
-        (0.0, math.sin(fov), -math.cos(fov)),
-        (0.0, -math.sin(fov), -math.cos(fov))]]
+    #return [Ray(pos=ray, dir=ray) for ray in [(0.0, 0.0, -1.0),
+    #    (math.sin(fov), 0.0, -math.cos(fov)),
+    #    (-math.sin(fov), 0.0, -math.cos(fov)),
+    #    (0.0, math.sin(fov), -math.cos(fov)),
+    #    (0.0, -math.sin(fov), -math.cos(fov))]]
+
+    rays = []
+    for i in range(0, 100):
+        angle_step = (fov * 2.0) / 100.0
+        angle = -fov + angle_step*float(i)
+        tup = (math.sin(angle), 0.0, -math.cos(fov))
+        rays.append(Ray(pos=tup, dir=tup))
+    return rays
 
 #TODO: probably a good idea to cache these results...
 def _get_theta_normal(principal_ray, theta):
