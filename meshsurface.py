@@ -100,10 +100,10 @@ class MeshSurface(Surface):
         cellData = output.GetCellData();
         self.normals = cellData.GetNormals();
 
-        stlWriter = vtk.vtkSTLWriter()
-        stlWriter.SetFileName("temp.stl")
-        stlWriter.SetInput(self.mesh)
-        stlWriter.Write()
+        #stlWriter = vtk.vtkSTLWriter()
+        #stlWriter.SetFileName("temp.stl")
+        #stlWriter.SetInput(self.mesh)
+        #stlWriter.Write()
 
         self.caster = vtk.vtkOBBTree()
         #set the 'mesh' as the caster's dataset

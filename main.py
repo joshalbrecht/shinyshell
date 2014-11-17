@@ -152,7 +152,7 @@ class Screen(object):
         :rtype: Point
         """
         point = self.pixel_distribution(vision_ray)
-        pixel = (point[0] * self.size[0]/2.0 * self.side_vector) + \
+        pixel = (point[0] * self.size[0]/2.0 * self.side_vector * -1.0) + \
                (point[1] * self.size[1]/2.0 * self.up_vector) + \
                self.position
         return pixel
@@ -189,7 +189,7 @@ def create_rays(screen, fov):
     #        #[(0, 0), (0, fov), (math.pi/2.0, fov), (math.pi, fov), (3.0*math.pi/2.0, fov)]]
     #    [(0, 0)]]
 
-    fov = fov*0.99
+    #fov = fov*0.99
     #return [Ray(pos=ray, dir=ray) for ray in [(0.0, 0.0, -1.0),
     #    (math.sin(fov), 0.0, -math.cos(fov)),
     #    (-math.sin(fov), 0.0, -math.cos(fov)),
@@ -197,6 +197,8 @@ def create_rays(screen, fov):
     #    (0.0, -math.sin(fov), -math.cos(fov))]]
 
     rays = []
+    #tup = (math.sin(fov), 0.0, -math.cos(fov))
+    #rays.append(Ray(pos=tup, dir=tup))
     for i in range(0, 100):
         angle_step = (fov * 2.0) / 100.0
         angle = -fov + angle_step*float(i)
@@ -212,7 +214,7 @@ def _get_theta_normal(principal_ray, theta):
     base_principal_ray = Point3D(0.0, 0.0, -1.0)
     ray_rotation = numpy.zeros((3, 3))
     rotation_matrix.R_2vect(ray_rotation, base_principal_ray, principal_ray)
-    base_theta_ray = Point3D(math.cos(theta), math.sin(theta), 0)
+    base_theta_ray = Point3D(-math.sin(theta), math.cos(theta), 0)
     return ray_rotation.dot(base_theta_ray)
 
 def _normalize(a):
