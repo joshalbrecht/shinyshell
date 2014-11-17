@@ -186,7 +186,8 @@ def create_rays(screen, fov):
     """
     return [Ray(pos=screen.vision_ray_to_pixel(AngleVector(theta, phi)), dir=screen.direction) \
             for (theta, phi) in \
-            [(0, 0), (0, fov), (math.pi/2.0, fov), (math.pi, fov), (3.0*math.pi/2.0, fov)]]
+            #[(0, 0), (0, fov), (math.pi/2.0, fov), (math.pi, fov), (3.0*math.pi/2.0, fov)]]
+        [(0, 0)]]
 
 #TODO: probably a good idea to cache these results...
 def _get_theta_normal(principal_ray, theta):

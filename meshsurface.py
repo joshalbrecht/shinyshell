@@ -170,6 +170,11 @@ class MeshSurface(Surface):
         if code == 0:
             return self._inf_vector
         point = pointsVTKintersection.GetData().GetTuple3(0)
+        #TODO: should be way smarter than this and use normals to sort things out (don't hit when coming from reverse side of surface)
+        #basically the problem is that we're currently colliding right at the start of the ray
+        epsilon = 0.001
+        if numpy.linalg.norm(numpy.array(point) - A.pos) < epsilon:
+            return self._inf_vector
         return numpy.array(point)
 
 
