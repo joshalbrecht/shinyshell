@@ -13,6 +13,7 @@ class MeshSurface(Surface):
     def __init__(self, arcs, *args, **kwargs):
         Surface.__init__(self, *args, **kwargs)
         self.arcs = arcs
+        self._inf_vector = numpy.array((inf,inf,inf))
         self._build_mesh(arcs)
 
     def _build_mesh(self, arcs):
@@ -100,13 +101,42 @@ class MeshSurface(Surface):
         #build a caster locator
         self.caster.BuildLocator()
 
-    def topo(self, x, y):
+    def topo(self, xarray, yarray):
         """**Returns the Z value for a given X and Y**
 
         This method returns the topography of the polynomical surface to be
         used to plot the surface.
         """
-        return self.eval_poly(x, y)
+        result = zeros(xarray.shape)
+        for i in range(0, len(xarray)):
+            point = self._get_point_and_normal(xarray[i], yarray[i])[0]
+            if point == None:
+                result[i] = 0
+            else:
+                result[i] = point[2]
+        return result
+
+    def _get_point_and_normal(self, x, y):
+        pointRaySource = (x, y, -1000000.0)
+        pointRayTarget = (x, y, 1000000.0)
+
+        #create a 'vtkPoints' object to store the intersection points
+        pointsVTKintersection = vtk.vtkPoints()
+        #and a list for the cells
+        cellIds = vtk.vtkIdList()
+
+        #perform ray-casting (intersect a line with the mesh)
+        code = self.caster.IntersectWithLine(pointRaySource,
+                                             pointRayTarget,
+                                             pointsVTKintersection, cellIds)
+
+        # Interpret the 'code'. If "0" is returned then no intersections points
+        # were found so return an empty list
+        if code == 0:
+            return [None, None]
+        point = numpy.array(pointsVTKintersection.GetData().GetTuple3(0))
+        normal = numpy.array(self.normals.GetTuple(cellIds.GetId(0)))
+        return (point, normal)
 
     def _intersection(self, A):
         '''**Point of intersection between a ray and the polynomical surface**
@@ -125,44 +155,17 @@ class MeshSurface(Surface):
 
         #create a 'vtkPoints' object to store the intersection points
         pointsVTKintersection = vtk.vtkPoints()
-
-        cellIds = vtk.vtkIdList()
-
         #perform ray-casting (intersect a line with the mesh)
         code = self.caster.IntersectWithLine(pointRaySource,
                                              pointRayTarget,
-                                             pointsVTKintersection, cellIds)
+                                             pointsVTKintersection, None)
 
         # Interpret the 'code'. If "0" is returned then no intersections points
         # were found so return an empty list
         if code == 0:
-            #log.info(
-            #    "No intersection points found for 'pointRaySource': " + str(
-            #        pointRaySource) + " and 'pointRayTarget': " + str(
-            #        pointRayTarget))
-            return []
-        # If code == -1 then 'pointRaySource' lies outside the surface
-        #elif code == -1:
-        #    log.info("The point 'pointRaySource': " + str(
-        #        pointRaySource) + "lies inside the surface")
-
-        return pointsVTKintersection.GetData().GetTuple3(0)
-
-        ##get the actual data of the intersection points (the point tuples)
-        #pointsVTKIntersectionData = pointsVTKintersection.GetData()
-        ##get the number of tuples
-        #noPointsVTKIntersection = pointsVTKIntersectionData.GetNumberOfTuples()
-
-        ##create an empty list that will contain all list objects
-        #pointsIntersection = []
-
-        ## Convert the intersection points to a list of list objects.
-        #for idx in range(noPointsVTKIntersection):
-        #    _tup = pointsVTKIntersectionData.GetTuple3(idx)
-        #    pointsIntersection.append(_tup)
-
-        ##return the list of list objects
-        #return pointsIntersection
+            return self._inf_vector
+        point = pointsVTKintersection.GetData().GetTuple3(0)
+        return numpy.array(point)
 
 
     def normal(self, int_p):
@@ -174,14 +177,17 @@ class MeshSurface(Surface):
         Note: It uses ``x`` and ``y`` to calculate the ``z`` value and the normal.
         """
 
-        return n
+        normal = self._get_point_and_normal(int_p[0], int_p[1])[1]
+        if normal == None:
+            return numpy.array((0,0,1))
+        return normal
 
 
     def _repr_(self):
         '''
         Return an string with the representation of the mesh surface
         '''
-        return "MeshSurface(numPolys="+str(self.triangles)+")"
+        return "MeshSurface(numPolys="+str(self.normals.GetNumberOfTuples())+")"
 
 
 
