@@ -1,5 +1,65 @@
 #!/user/bin/python
 
+"""
+A tool for exploring freeform optics in the context of a laser raster based head mounted display.
+
+Specifically, generates the reflective shell based on a variety of system parameters, then traces
+rays through the system.
+
+Can generate a resulting spot diagram.
+
+Also visualizes the system with a crappy OpenGL wx wrapper.
+
+At a high level, there are only 3 components in the system--the screen (kind of mounted on your
+forehead), the reflective shell (in front of you, reflecting those rays to your eye), and your eye.
+
+Assumptions:
+    all units are mm and radians
+    center of eyeball at (0, 0, 0) facing -z
+    top of head towards +y
+    right is +x
+definitions:
+    lightRay: a ray coming from a pixel on the screen towards the eye
+    visionRay: a ray coming from the eye at a particular (theta, phi)
+    principalRay: the visionRay with theta=0 and phi=0
+    for all rays:
+        theta: here, theta is the rotational angle in the 2D plane that you are viewing with your eye as if it were a graph.
+                Thus, 0 is to the right, and increasing theta moves you counter clockwise
+        phi: how much off-axis the ray is going. 0 is straight ahead (along the principal ray), increasing phi is increasingly off-axis
+define system parameters:
+    fieldOfViewFunction: f(theta) = phi. Defines how wide the field of view is at a given angle
+    screen
+        center: (x, y, z) of screen center
+        angle: positive angle is tilted towards eye
+        width: dimension in x (when angle is 0)
+        height: dimension in y (when angle is 0)
+        pixelDistribution: defines a bidirectional mapping between visionRays and (x,y,z) coordinates
+    shell
+        distance: distance away from eye center (along the -z axis). This completely defines the screen.
+        coefficients: the coefficients of the taylor poly with which we are approximating the surface.
+            May replace this with a more numerical approach. Taylor poly is a function in x/y as defined above.
+core singular modeling assumption (for now):
+    pixelDistribution makes sense, eg, that there is such a 1:1 mapping between locations on the screen and (theta, phi) pairs (eg, vision rays)
+        this basically transforms the problem into one of figuring out the pixelDistribution (and eventually, screen shape) instead of the surface
+    also--the surface should be smooth and continuous (micropixels might allow something slightly better, but no)
+
+Given that, how it works now is relatively simple:
+    (pick values for all parameters above)
+    pick a distance away from the eye (along the principal ray)
+    for various values of theta in the range [0, 2pi):
+        let the thetaPlane be the YZ-plane rotated about the principalRay by theta
+        define a vector field (ODE) based on the fact that at any given point, we know theta (obviously) and can thus calculate phi, which means we can calculate the position of the pixel, which means we can calculate the angle required for the screen surface to bounce the ray from the eye to the pixel
+        do numerical integration to walk through that field along the thetaPlane (starting at the point along the central ray that is "distance" away from the eye)
+        this walk is an "arc"--a series of points that lie on the surface of the reflective shell
+    after all arcs have been defined, simply connect the together in a triangle mesh in the obvious way
+
+references:
+    https://pyoptools.googlecode.com/hg-history/stable/doc/_build/html/pyoptools_raytrace_surface.html#pyoptools.raytrace.surface.TaylorPoly
+    http://www.creol.ucf.edu/research/publications/2012.pdf
+    https://gitorious.org/vtkwikiexamples/wikiexamples/raw/a457b8a51c3084896f98a0acd4faf6bb2a88031e:Python/PolyData/SmoothMeshgrid.py
+    https://bitbucket.org/somada141/pycaster/src/50512b958dc5bc91de7ae3f532a650950c68ab10/pycaster/pycaster.py?at=master
+"""
+
 import itertools
 import math
 from collections import namedtuple
