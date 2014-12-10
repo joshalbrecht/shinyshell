@@ -1,6 +1,9 @@
 #!/user/bin/python
 
 """
+Installation:
+sudo apt-get install python-wxgtk2.8 python-vtk
+
 A tool for exploring freeform optics in the context of a laser raster based head mounted display.
 
 Specifically, generates the reflective shell based on a variety of system parameters, then traces
