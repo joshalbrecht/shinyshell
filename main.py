@@ -117,6 +117,8 @@ import scipy.integrate
 import rotation_matrix
 from meshsurface import MeshSurface
 
+PLANE_ANGLE_STEP = math.pi / 20.0
+
 
 def Point2D(*args):
     return numpy.array(args)
@@ -216,7 +218,7 @@ class Screen(object):
         """
         point = self.pixel_distribution(vision_ray)
         pixel = (point[0] * self.size[0]/2.0 * self.side_vector * -1.0) + \
-               (point[1] * self.size[1]/2.0 * self.up_vector) + \
+               (point[1] * self.size[1]/2.0 * self.up_vector * -1.0) + \
                self.position
         return pixel
 
@@ -265,8 +267,11 @@ def create_rays(screen, fov):
     for i in range(0, 100):
         angle_step = (fov * 2.0) / 100.0
         angle = -fov + angle_step*float(i)
-        tup = (math.sin(angle), 0.0, -math.cos(fov))
-        rays.append(Ray(pos=tup, dir=tup))
+        #horizontal fan of rays
+        #tup = (math.sin(angle), 0.0, -math.cos(angle))
+        #vertical fan of rays
+        tup = (0.0, math.sin(angle), -math.cos(angle))
+        rays.append(Ray(pos=(0,0,0), dir=tup))
     return rays
 
 #TODO: probably a good idea to cache these results...
@@ -366,7 +371,7 @@ def main():
 
     #create number of different arcs along the surface (for debugging this function)
     arcs = []
-    for arc_theta in numpy.arange(0, 2.0 * math.pi, math.pi / 20.0):
+    for arc_theta in numpy.arange(0, 2.0 * math.pi, PLANE_ANGLE_STEP):
         arc = create_arc(screen, principal_eye_vector, shell_distance, arc_theta)
         #visualize the arc
         #arc = arc[0::10]
