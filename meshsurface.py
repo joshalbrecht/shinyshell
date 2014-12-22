@@ -20,29 +20,14 @@ class MeshSurface(Surface):
         # Define points, triangles and colors
         points = vtk.vtkPoints()
         triangles = vtk.vtkCellArray()
-
+        
         # Build the meshgrid manually
         count = 0
-        for i in range(0, len(arcs)):
-            arc = arcs[i]
+        for i in range(1, len(arcs)):
             parc = arcs[i-1]
-
-            # first triangle
-            points.InsertNextPoint(arc[0][0], arc[0][1], arc[0][2])
-            points.InsertNextPoint(arc[1][0], arc[1][1], arc[1][2])
-            points.InsertNextPoint(parc[1][0], parc[1][1], parc[1][2])
-
-            triangle = vtk.vtkTriangle()
-            pointIds = triangle.GetPointIds()
-            pointIds.SetId(0, count)
-            pointIds.SetId(1, count + 1)
-            pointIds.SetId(2, count + 2)
-
-            count += 3
-
-            triangles.InsertNextCell(triangle)
-
-            for j in range(1, len(arc)-1):
+            arc = arcs[i]
+            
+            for j in range(0, len(arc)-1):
 
                 # Triangle 1
                 points.InsertNextPoint(arc[j][0], arc[j][1], arc[j][2])
@@ -85,12 +70,12 @@ class MeshSurface(Surface):
         cleanPolyData = vtk.vtkCleanPolyData()
         cleanPolyData.SetInput(trianglePolyData)
         cleanPolyData.Update()
-        #self.mesh = cleanPolyData.GetOutput()
+        self.mesh = cleanPolyData.GetOutput()
 
-        smooth_loop = vtk.vtkLoopSubdivisionFilter()
-        smooth_loop.SetNumberOfSubdivisions(3)
-        smooth_loop.SetInput(cleanPolyData.GetOutput())
-        self.mesh = smooth_loop.GetOutput()
+        #smooth_loop = vtk.vtkLoopSubdivisionFilter()
+        #smooth_loop.SetNumberOfSubdivisions(3)
+        #smooth_loop.SetInput(cleanPolyData.GetOutput())
+        #self.mesh = smooth_loop.GetOutput()
 
         normals = vtk.vtkPolyDataNormals()
         normals.SetInput(self.mesh)
@@ -100,10 +85,10 @@ class MeshSurface(Surface):
         cellData = output.GetCellData();
         self.normals = cellData.GetNormals();
 
-        #stlWriter = vtk.vtkSTLWriter()
-        #stlWriter.SetFileName("temp.stl")
-        #stlWriter.SetInput(self.mesh)
-        #stlWriter.Write()
+        stlWriter = vtk.vtkSTLWriter()
+        stlWriter.SetFileName("temp.stl")
+        stlWriter.SetInput(self.mesh)
+        stlWriter.Write()
 
         self.caster = vtk.vtkOBBTree()
         #set the 'mesh' as the caster's dataset

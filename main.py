@@ -274,16 +274,21 @@ def create_rays(screen, fov):
         rays.append(Ray(pos=(0,0,0), dir=tup))
     return rays
 
-#TODO: probably a good idea to cache these results...
-def _get_theta_normal(principal_ray, theta):
+def _get_arc_plane_normal(principal_ray, is_horizontal):
     """
-    Simply the normal to the plane defined by theta and the principal ray
+    Defines the normal for the arc plane (the plane in which the arc will reside)
+    If the principal ray is (0,0,-1) and:
+        is_horizontal=True: the arc plane normal will be (0,1,0)
+        is_horizontal=False: the arc plane normal will be (1,0,0)
+    Otherwise, those vectors will undergo the same rotation as the principal ray
     """
     base_principal_ray = Point3D(0.0, 0.0, -1.0)
     ray_rotation = numpy.zeros((3, 3))
     rotation_matrix.R_2vect(ray_rotation, base_principal_ray, principal_ray)
-    base_theta_ray = Point3D(-math.sin(theta), math.cos(theta), 0)
-    return ray_rotation.dot(base_theta_ray)
+    base_arc_ray = Point3D(1.0, 0.0, 0.0)
+    if is_horizontal:
+        base_arc_ray = Point3D(0.0, 1.0, 0.0)
+    return ray_rotation.dot(base_arc_ray)
 
 def _normalize(a):
     return a / numpy.linalg.norm(a)
@@ -306,47 +311,84 @@ def _normalized_vector_angle(v1_u, v2_u):
             return numpy.pi
     return angle
 
+def _get_theta_from_point(principal_ray, h_arc_normal, v_arc_normal, point):
+    #project point onto the p=(0,0,0),n=principal_ray plane
+    dist = principal_ray.dot(point)
+    projected_point = point - principal_ray*dist
+    #normalize. if 0 length, return 0
+    length = numpy.linalg.norm(projected_point)
+    if length == 0.0:
+        return 0.0
+    normalized_point = projected_point / length
+    #measure angle between normalized projection and v_arc_normal
+    theta = _normalized_vector_angle(normalized_point, v_arc_normal)
+    #if angle between normalized projection and h_arc_normal is > pi / 2.0, subtract angle from 2.0 * pi
+    if _normalized_vector_angle(normalized_point, h_arc_normal) > math.pi / 2.0:
+        theta = math.pi * 2.0 - theta
+    return theta
 
-def create_arc(screen, principal_ray, distance, theta):
+#TODO: this code with the non-(0,0,-1) principal ray is all untested. 
+def create_new_arc(screen, principal_ray, point0, is_horizontal=None):
     """
-    Given a screen, principal ray, distance, and theta, calculate the shape of the screen such that
+    Given a screen and point, calculate the shape of the screen such that
     every vision ray gives a correct reflection to the corresponding pixel.
+    
+    Can either trace 'horizontally' or 'vertically' (relative to the principal ray)
     """
+    
+    assert is_horizontal != None
+    h_arc_normal = _get_arc_plane_normal(principal_ray, True)
+    v_arc_normal = _get_arc_plane_normal(principal_ray, False)
 
     #this function defines the derivative of the surface at any given point.
-    #simply the intersection of the theta plane and the required surface plane at that point
+    #simply the intersection of the arc plane and the required surface plane at that point
     #if there is no way to bounce to the front of the screen, the derivative is just 0
-    theta_normal = _get_theta_normal(principal_ray, theta)
+    arc_plane_normal = _get_arc_plane_normal(principal_ray, is_horizontal)
     def f(point, t):
         #TODO: return [0,0,0] if the point is not in front of the screen (since it would not be visible at all, we should stop tracing this surface)
         eye_to_point_vec = _normalize(point)
         phi = _normalized_vector_angle(principal_ray, eye_to_point_vec)
+        #print phi
+        theta = _get_theta_from_point(principal_ray, h_arc_normal, v_arc_normal, point)
+        #print theta
         pixel_point = screen.vision_ray_to_pixel(AngleVector(theta, phi))
+        #print pixel_point
         point_to_eye_vec = eye_to_point_vec * -1
         point_to_screen_vec = _normalize(pixel_point - point)
+        #print point_to_screen_vec
         surface_normal = _normalize((point_to_screen_vec + point_to_eye_vec) / 2.0)
+        #print surface_normal
         #TODO: might want to reverse the order of these just to be more intuitive. I feel like positive t should move from the center outward
-        derivative = _normalize(numpy.cross(surface_normal, theta_normal))
+        derivative = _normalize(numpy.cross(surface_normal, arc_plane_normal))
+        #print derivative
         return derivative
 
-    #initial point is distance away, along the principal ray
-    point0 = principal_ray * distance
+    #f(Point3D(-0.99991286, -34.10890065, 4.27389904), 0)
+    #f(Point3D(0.99991286, -34.10890065, 4.27389904), 0)
 
     #the set of t values for which we would like to have output.
     #t is a measure of distance along the surface of the screen.
     #TODO: could do a better job of estimating how much t is required
     #more t means that we're wasting time, less t means we might not quite finish defining the whole surface
     #could probably be much more intelligent about this
-    t_step = 0.2
-    max_t = 100
-    t_values = numpy.array(list(numpy.arange(0, 10.0, 0.5)) + list(numpy.arange(10.1, max_t, t_step)))
+    t_step = 1.0
+    max_t = 80.0
+    t_values = numpy.arange(0.0, max_t, t_step)
 
     #actually perform the numerical integration.
-    result = scipy.integrate.odeint(f, point0, t_values)
-    #convert the result into a more useful form
-    #result = result[:, 0]
-
-    return result
+    half_arc = scipy.integrate.odeint(f, point0, t_values)
+    
+    #do the other half as well:
+    def g(point, t):
+        return -1.0 * f(point, t)
+    
+    #actually perform the numerical integration.
+    other_half_arc = list(scipy.integrate.odeint(g, point0, t_values))
+    other_half_arc.pop(0)
+    other_half_arc.reverse()
+    result = other_half_arc + list(half_arc)
+    
+    return numpy.array(result)
 
 def main():
     #create the main app
@@ -367,22 +409,38 @@ def main():
     screen = Screen(screen_location, screen_rotation, screen_size, pixel_distribution)
 
     shell_distance = 60.0
-    shell_radius = 60.0#80.0
-
-    #create number of different arcs along the surface (for debugging this function)
+    shell_radius = 60.0
+    
+    #create the main arc
+    starting_point = principal_eye_vector * shell_distance
+    spine = create_new_arc(screen, principal_eye_vector, starting_point, is_horizontal=True)
+    #create each of the arcs reaching off of the spine
     arcs = []
-    for arc_theta in numpy.arange(0, 2.0 * math.pi, PLANE_ANGLE_STEP):
-        arc = create_arc(screen, principal_eye_vector, shell_distance, arc_theta)
-        #visualize the arc
-        #arc = arc[0::10]
+    #for delta in (Point3D(0.0, 10.0, 0.0), Point3D(0.0, 0.0, 0.0), Point3D(0.0, -10.0, 0.0)):
+    #    arc = []
+    #    for point in spine:
+    #        arc.append(point + delta)
+    #    arcs.append(arc)
+    
+    #negp = Point3D(-0.99991286, 0.0, -59.98856816)
+    #posp = Point3D(0.99991286, 0.0, -59.98856816)
+    #negarc = create_new_arc(screen, principal_eye_vector, negp, is_horizontal=False)
+    #posarc = create_new_arc(screen, principal_eye_vector, posp, is_horizontal=False)
+    for point in spine:
+        arc = create_new_arc(screen, principal_eye_vector, point, is_horizontal=False)
+        
+        ##TODO: this is a total hack. something else is broken.
+        #if point[0] < 0.0:
+        #    arc = list(arc)
+        #    arc.reverse()
+        #    arc = numpy.array(arc)
+        
         arcs.append(arc)
-        #for point in arc:
-        #    points_to_draw.append(point)
+        
 
     shell = create_shell(shell_distance, principal_eye_vector, shell_radius, arcs)
     detector = create_detector()
     raylist = create_rays(screen, fov)
-
 
     #assemble them into the system
     system = System(complist=[screen.create_component(), shell, detector], n=1)
