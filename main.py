@@ -39,8 +39,6 @@ define system parameters:
         pixelDistribution: defines a bidirectional mapping between visionRays and (x,y,z) coordinates
     shell
         distance: distance away from eye center (along the -z axis). This completely defines the screen.
-        coefficients: the coefficients of the taylor poly with which we are approximating the surface.
-            May replace this with a more numerical approach. Taylor poly is a function in x/y as defined above.
 core singular modeling assumption (for now):
     pixelDistribution makes sense, eg, that there is such a 1:1 mapping between locations on the screen and (theta, phi) pairs (eg, vision rays)
         this basically transforms the problem into one of figuring out the pixelDistribution (and eventually, screen shape) instead of the surface
@@ -218,7 +216,7 @@ class Screen(object):
         """
         point = self.pixel_distribution(vision_ray)
         pixel = (point[0] * self.size[0]/2.0 * self.side_vector * -1.0) + \
-               (point[1] * self.size[1]/2.0 * self.up_vector * -1.0) + \
+               (point[1] * self.size[1]/2.0 * self.up_vector) + \
                self.position
         return pixel
 
@@ -348,19 +346,13 @@ def create_new_arc(screen, principal_ray, point0, is_horizontal=None):
         #TODO: return [0,0,0] if the point is not in front of the screen (since it would not be visible at all, we should stop tracing this surface)
         eye_to_point_vec = _normalize(point)
         phi = _normalized_vector_angle(principal_ray, eye_to_point_vec)
-        #print phi
         theta = _get_theta_from_point(principal_ray, h_arc_normal, v_arc_normal, point)
-        #print theta
         pixel_point = screen.vision_ray_to_pixel(AngleVector(theta, phi))
-        #print pixel_point
         point_to_eye_vec = eye_to_point_vec * -1
         point_to_screen_vec = _normalize(pixel_point - point)
-        #print point_to_screen_vec
         surface_normal = _normalize((point_to_screen_vec + point_to_eye_vec) / 2.0)
-        #print surface_normal
         #TODO: might want to reverse the order of these just to be more intuitive. I feel like positive t should move from the center outward
         derivative = _normalize(numpy.cross(surface_normal, arc_plane_normal))
-        #print derivative
         return derivative
 
     #f(Point3D(-0.99991286, -34.10890065, 4.27389904), 0)
