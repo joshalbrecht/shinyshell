@@ -127,7 +127,7 @@ import rotation_matrix
 from meshsurface import MeshSurface
 
 FOCAL_LENGTH = 24.0
-PUPIL = 7.5
+PUPIL = 4
 
 #these are very simple classes. just an alias for a numpy array that gives a little more intentionality to the code
 def Point2D(*args):
@@ -253,11 +253,11 @@ def create_detector():
     return Detector(ccd, (0, 0, FOCAL_LENGTH/2.0), (0, 0, 0))
 
 def create_cornea():
-    lens_radius = 14.4
-    
-    offset = lens_radius - math.sqrt(lens_radius*lens_radius-PUPIL*PUPIL)
-    surface1 = Spherical(curvature=1.0/lens_radius, shape=Circular(radius=PUPIL))
-    surface2 = Spherical(curvature=1.0/lens_radius, shape=Circular(radius=PUPIL))
+    surface_radius = 14.4
+    lens_radius = 2 * PUPIL
+    offset = surface_radius - math.sqrt(surface_radius*surface_radius-lens_radius*lens_radius)
+    surface1 = Spherical(curvature=1.0/surface_radius, shape=Circular(radius=lens_radius))
+    surface2 = Spherical(curvature=1.0/surface_radius, shape=Circular(radius=lens_radius))
     lens = Component(surflist=[(surface1, (0, 0, -offset), (0, 0, 0)), (surface2, (0, 0, offset), (0, math.pi, 0))], material=1.3)
     Cornea = namedtuple('Cornea', ['lens', 'position', 'rotations'])
     return Cornea(lens, (0, 0, -FOCAL_LENGTH/2.0), (0, 0, 0))
@@ -276,8 +276,8 @@ def create_rays_from_screen(screen, fov):
     rotations = []
     rays = []
 
-    for xangle in numpy.arange(-math.pi/2.0, math.pi/2.0, math.pi/64.0):
-        for yangle in numpy.arange(-math.pi/2.0, math.pi/2.0, math.pi/64.0):
+    for xangle in numpy.arange(-math.pi/4.0, math.pi/4.0, math.pi/128.0):
+        for yangle in numpy.arange(-math.pi/4.0, math.pi/4.0, math.pi/128.0):
             rotations.append((xangle, yangle, 0))
 
     for rot in rotations:
@@ -293,8 +293,8 @@ def create_rays_from_screen(screen, fov):
 
 def create_rays_parallel_to_eye(screen, fov):
     rays = []
-    for x in numpy.arange(-3, 3, 0.2):
-        for y in numpy.arange(-3, 3, 0.2):
+    for x in numpy.arange(-PUPIL, PUPIL, 0.2):
+        for y in numpy.arange(-PUPIL, PUPIL, 0.2):
             rays.append( Ray(pos=(x, y, -30), dir=(0, 0, 1)) )
     return rays
 
@@ -350,6 +350,15 @@ def _normalized_vector_angle(v1_u, v2_u):
             return numpy.pi
     return angle
 
+def angle_vector_to_vector(angle_vec, principal_ray):
+    """
+    Converts from a (phi, theta) pair to a normalized Point3D()
+    """
+    phi_rot = create_transform_matrix_from_rotations((0,-angle_vec.phi,0))
+    ray = phi_rot.dot(principal_ray)
+    theta_rot = create_transform_matrix_from_rotations((0,0,angle_vec.theta))
+    return theta_rot.dot(ray)
+
 def _get_theta_from_point(principal_ray, h_arc_normal, v_arc_normal, point):
     #project point onto the p=(0,0,0),n=principal_ray plane
     dist = principal_ray.dot(point)
@@ -378,6 +387,34 @@ def create_new_arc(screen, principal_ray, point0, is_horizontal=None):
     assert is_horizontal != None
     h_arc_normal = _get_arc_plane_normal(principal_ray, True)
     v_arc_normal = _get_arc_plane_normal(principal_ray, False)
+    
+    def get_center(x, x_min, x_max, x_step):
+        print x, x_min, x_max, x_step
+        centers = numpy.arange(x_min, x_max, x_step)
+        for i in range(0, len(centers)-1):
+            prev = centers[i]
+            next = centers[i+1]
+            if x < (next + prev) / 2.0:
+                return prev, i 
+            
+    def find_center_given_phi_theta(phi, theta):
+        fov = math.pi/4
+        bucketed_phi, bucket_num = get_center(phi, 0, fov/2.0, fov/40.0)
+        num_theta_buckets = ((bucket_num-1) * 15) + 1
+        bucketed_theta, _ = get_center(phi, 0, 2.0*math.pi, 2.0*math.pi/float(num_theta_buckets))
+        return bucketed_phi, bucketed_theta
+    
+    #def find_center_given_phi_theta(phi, theta):
+    #    phi_centers = numpy.arange(0, screen.fov/2.0, screen.fov/40.0)
+    #    phi_bounds = numpy.array(0, [(phi_centers[x+1]+phi_centers[x])/2 for x in range(0,len(phi_centers)-1)])
+    #
+    #    # calculate theta given phi, picking some arbitrary constant to adjust
+    #    cons = 4
+    #    theta_incr = phi_bounds*(1/cons)
+    #    for theta in theta_incr:
+    #        code
+    #    
+    #    theta = numpy.arange(0, 2*math.pi, theta_incr)
 
     #this function defines the derivative of the surface at any given point.
     #simply the intersection of the arc plane and the required surface plane at that point
@@ -385,9 +422,20 @@ def create_new_arc(screen, principal_ray, point0, is_horizontal=None):
     arc_plane_normal = _get_arc_plane_normal(principal_ray, is_horizontal)
     def f(point, t):
         #TODO: return [0,0,0] if the point is not in front of the screen (since it would not be visible at all, we should stop tracing this surface)
-        eye_to_point_vec = Point3D(0,0,-1)#_normalize(point)
-        phi = 0#_normalized_vector_angle(principal_ray, eye_to_point_vec)
-        theta = 0#_get_theta_from_point(principal_ray, h_arc_normal, v_arc_normal, point)
+        #eye_to_point_vec = _normalize(point)
+        #phi = _normalized_vector_angle(principal_ray, eye_to_point_vec)
+        #theta = _get_theta_from_point(principal_ray, h_arc_normal, v_arc_normal, point)
+        
+        #eye_to_point_vec = Point3D(0,0,-1)
+        #phi = 0
+        #theta = 0
+        
+        eye_to_point_vec = _normalize(point)
+        phi = _normalized_vector_angle(principal_ray, eye_to_point_vec)
+        theta = _get_theta_from_point(principal_ray, h_arc_normal, v_arc_normal, point)
+        phi, theta = find_center_given_phi_theta(phi, theta)
+        eye_to_point_vec = angle_vector_to_vector(AngleVector(theta, phi), principal_ray)
+        
         pixel_point = screen.vision_ray_to_pixel(AngleVector(theta, phi))
         point_to_eye_vec = eye_to_point_vec * -1
         point_to_screen_vec = _normalize(pixel_point - point)
