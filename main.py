@@ -120,6 +120,7 @@ import rotation_matrix
 from meshsurface import MeshSurface
 
 FOCAL_LENGTH = 24.0
+PUPIL = 7.5
 
 #these are very simple classes. just an alias for a numpy array that gives a little more intentionality to the code
 def Point2D(*args):
@@ -246,11 +247,19 @@ def create_detector():
 
 def create_cornea():
     lens_radius = 14.4
-    surface1 = Spherical(1/lens_radius, Circular(radius=20.0))
-    surface2 = Spherical(1/lens_radius, Circular(radius=20.0))
-    lens = Component(surflist=[(surface1, (0, 0, 0), (0, 0, 0)), (surface2, (0, 0, 0), (0, math.pi, 0))], material=1.3)
+    
+    offset = lens_radius - math.sqrt(lens_radius*lens_radius-PUPIL*PUPIL)
+    surface1 = Spherical(curvature=1.0/lens_radius, shape=Circular(radius=PUPIL))
+    surface2 = Spherical(curvature=1.0/lens_radius, shape=Circular(radius=PUPIL))
+    lens = Component(surflist=[(surface1, (0, 0, -offset), (0, 0, 0)), (surface2, (0, 0, offset), (0, math.pi, 0))], material=1.3)
     Cornea = namedtuple('Cornea', ['lens', 'position', 'rotations'])
     return Cornea(lens, (0, 0, -FOCAL_LENGTH/2.0), (0, 0, 0))
+
+def create_iris():
+    surface = Aperture(shape=Rectangular(size=(150,150)), ap_shape=Circular(radius=PUPIL))
+    aperture = Component(surflist=[(surface, (0, 0, 0), (0, 0, 0))])
+    Iris = namedtuple('Iris', ['aperture', 'position', 'rotations'])
+    return Iris(aperture, (0, 0, -FOCAL_LENGTH/2.0), (0, 0, 0))
 
 def create_rays_from_screen(screen, fov):
     """
@@ -260,9 +269,9 @@ def create_rays_from_screen(screen, fov):
     rotations = []
     rays = []
 
-    for angle in numpy.arange(-math.pi/2.0, math.pi/2.0, math.pi/64.0):
-        rotations.append((angle, 0, 0))
-        rotations.append((0, angle, 0))
+    for xangle in numpy.arange(-math.pi/2.0, math.pi/2.0, math.pi/64.0):
+        for yangle in numpy.arange(-math.pi/2.0, math.pi/2.0, math.pi/64.0):
+            rotations.append((xangle, yangle, 0))
 
     for rot in rotations:
         rot_mat = create_transform_matrix_from_rotations(rot)
@@ -277,8 +286,8 @@ def create_rays_from_screen(screen, fov):
 
 def create_rays_parallel_to_eye(screen, fov):
     rays = []
-    for x in numpy.arange(-10, 10, 0.5):
-        for y in numpy.arange(-10, 10, 0.5):
+    for x in numpy.arange(-3, 3, 0.2):
+        for y in numpy.arange(-3, 3, 0.2):
             rays.append( Ray(pos=(x, y, -30), dir=(0, 0, 1)) )
     return rays
 
@@ -435,11 +444,12 @@ def main():
         
     shell = create_shell(shell_distance, principal_eye_vector, shell_radius, arcs)
     detector = create_detector()
-    raylist = create_rays_parallel_to_eye(screen, fov)
+    raylist = create_rays_from_screen(screen, fov)
+    iris = create_iris()
     cornea = create_cornea()
 
     #assemble them into the system
-    system = System(complist=[screen.create_component(), shell, detector, cornea], n=1)
+    system = System(complist=[screen.create_component(), shell, detector, cornea, iris], n=1)
     system.ray_add(raylist)
 
     #run the simulation
