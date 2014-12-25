@@ -22,7 +22,7 @@ Assumptions:
     top of head towards +y
     right is +x
 definitions:
-    lightRay: a ray coming from a pixel on the screen towards the eye
+    lightRay: a ray coming from a pixel on the screen towards the eye. defined as an (x,y,z) vector of length 1
     visionRay: a ray coming from the eye at a particular (theta, phi)
     principalRay: the visionRay with theta=0 and phi=0
     for all rays:
@@ -124,7 +124,7 @@ def Point2D(*args):
     return numpy.array(args)
 def Point3D(*args):
     return numpy.array(args)
-#Used for vision and light rays. See module docstring
+#Used for vision rays. See module docstring
 AngleVector = namedtuple('AngleVector', ['theta', 'phi'])
 
 class ScreenComponent(Component):
