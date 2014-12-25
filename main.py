@@ -47,13 +47,12 @@ core singular modeling assumption (for now):
 Given that, how it works now is relatively simple:
     (pick values for all parameters above)
     pick a distance away from the eye (along the principal ray)
-    for various values of theta in the range [0, 2pi):
-        let the thetaPlane be the YZ-plane rotated about the principalRay by theta
-        define a vector field (ODE) based on the fact that at any given point, we know theta (obviously) and can thus calculate phi, which means we can calculate the position of the pixel, which means we can calculate the angle required for the screen surface to bounce the ray from the eye to the pixel
-        do numerical integration to walk through that field along the thetaPlane (starting at the point along the central ray that is "distance" away from the eye)
-        this walk is an "arc"--a series of points that lie on the surface of the reflective shell
-    after all arcs have been defined, simply connect the together in a triangle mesh in the obvious way
-
+    the point that is that distance away from the eye along the principal ray uniquely defines the surface
+    create an horizontal arc by walking through the vector field away from that point in both directions
+    this is the "spine"
+    then create a bunch of ribs by doing the same process to create vertical arcs (one at each point in the spine)
+    those vertical ribs can be linked together to form a triangle mesh which we can then draw, bounce rays off, etc
+    
 references:
     https://pyoptools.googlecode.com/hg-history/stable/doc/_build/html/pyoptools_raytrace_surface.html#pyoptools.raytrace.surface.TaylorPoly
     http://www.creol.ucf.edu/research/publications/2012.pdf
@@ -78,10 +77,15 @@ import wx
 from matplotlib import use
 use('WXAgg')
 
-#wheee, monkey patches:
+#wheee, monkey patches. simply made it so that any points in points_to_draw will be rendered as a little cross (3 intersecting lines)
 points_to_draw = []
 import wxRayTrace.gui.glplotframe
 def DrawPoint(self, point):
+    """
+    Draws a point as 3 intersecting, small lines. Why? Because I don't want to mess around with GL_POINTs and the associated parameters to color and size them
+    
+    Feel free to change
+    """
     rc, gc, bc=(1.0, 1.0, 1.0)
     size = 1.0
     glBegin(GL_LINES)
@@ -93,16 +97,16 @@ def DrawPoint(self, point):
     glVertex3f( point[0], point[1], point[2]+size)
     glVertex3f( point[0], point[1], point[2]-size)
     glEnd()
-
 def new_draw(self):
-    #Draw Rays
-    #print "RRRRRRRRRRRRRRRRRRRRRRxR", self.os
+    """
+    replacement of the original function so that we can also draw debug points (in addition to rays and components)
+    """
     if self.os != None:
         for i in self.os.prop_ray:
                 self.DrawRay(i)
-        #Draw Components
         for comp in self.os.complist:
                 self.DrawComp(comp)
+        #Monkey patched to add this--just want to draw all of the points for easy debugging
         for point in points_to_draw:
                 DrawPoint(self, point)
 wxRayTrace.gui.glplotframe.glCanvas.DrawGLL = new_draw
@@ -115,36 +119,13 @@ import scipy.integrate
 import rotation_matrix
 from meshsurface import MeshSurface
 
-PLANE_ANGLE_STEP = math.pi / 20.0
-
-
+#these are very simple classes. just an alias for a numpy array that gives a little more intentionality to the code
 def Point2D(*args):
     return numpy.array(args)
-Point3D = Point2D
+def Point3D(*args):
+    return numpy.array(args)
+#Used for vision and light rays. See module docstring
 AngleVector = namedtuple('AngleVector', ['theta', 'phi'])
-
-class PointComponent(Component):
-    """
-    A bunch of squares, just for visualizing points
-    """
-
-    def _get_hitlist(self):
-        return tuple()
-
-    hit_list=property(_get_hitlist)
-
-    def __init__(self, location, transparent=True,*args,**kwargs):
-        Component.__init__(self, *args, **kwargs)
-        size = numpy.array((1, 1))
-        self.size=size
-        self.location = location
-        self.surflist["S1"] = (Plane(shape=Rectangular(size=size)), (0, 0, 0), (0, 0, 0))
-        self.surflist["S2"] = (Plane(shape=Rectangular(size=size)), (0, 0, 0), (math.pi/2.0, 0, 0))
-        self.surflist["S3"] = (Plane(shape=Rectangular(size=size)), (0, 0, 0), (0, math.pi/2.0, 0))
-        self.material = 1.0
-
-    def component(self):
-        return (self, self.location, (0,0,0))
 
 class ScreenComponent(Component):
     """
@@ -164,6 +145,18 @@ class ScreenComponent(Component):
         self.material=1.
 
 def create_transform_matrix_from_rotations(rotations):
+    """
+    'rotations' is a really dumb representation / notion of rotation from pyOpTools
+    Basically they want you to define a rotation as the tuple:
+    
+    (x_rot, y_rot, z_rot)
+    
+    Which defines a set of 3 rotations that are applied sequentially.
+    ie, rotate around the x-axis by x_rot, THEN around the y axis by y_rot, then around
+    the z axis by z_rot.
+    
+    This function converts that nonsense into the resulting rotation matrix
+    """
     c = numpy.cos(rotations)
     s = numpy.sin(rotations)
 
@@ -188,6 +181,7 @@ class Screen(object):
     :attr position: the location of the center of the screen
     :type position: Point3D
     :attr rotations: (rx,ry,yz). Pretty dumb way of thinking about things but whatever.
+    see 'create_transform_matrix_from_rotations' for a description of the format
     :type rotations: Point3D
     :attr size: the width and height of the screen
     :type size: Point2D
@@ -209,6 +203,8 @@ class Screen(object):
 
     def vision_ray_to_pixel(self, vision_ray):
         """
+        Convert from a VisionRay into a Point3D corresponding to where the pixel would be in real space on the screen
+        
         :param vision_ray: a vector from the eye
         :type  vision_ray: AngleVector
         :returns: location on the screen that corresponds to the given vision ray
@@ -221,6 +217,9 @@ class Screen(object):
         return pixel
 
     def create_component(self):
+        """
+        Returns a Component for pyOpTools
+        """
         return (ScreenComponent(self.size), self.position, self.rotations)
 
 def create_shell(distance, principal_eye_vector, radius, arcs):
@@ -243,25 +242,19 @@ def create_detector():
     Detector = namedtuple('Detector', ['ccd', 'position', 'direction'])
     return Detector(ccd, (0, 0, 0), (0, 0, 0))
 
+def create_rays_from_screen(screen, fov):
+    """
+    For now, just make a bunch of light rays coming off of the screen.
+    """
+    return [Ray(pos=screen.vision_ray_to_pixel(AngleVector(theta, phi)), dir=screen.direction) \
+            for (theta, phi) in \
+            [(0, 0), (0, fov), (math.pi/2.0, fov), (math.pi, fov), (3.0*math.pi/2.0, fov)]]
+
 def create_rays(screen, fov):
     """
-    For now, just make a bunch of rays coming off of the screen.
+    Create a bunch of vision rays coming from your eye
     """
-    #return [Ray(pos=screen.vision_ray_to_pixel(AngleVector(theta, phi)), dir=screen.direction) \
-    #        for (theta, phi) in \
-    #        #[(0, 0), (0, fov), (math.pi/2.0, fov), (math.pi, fov), (3.0*math.pi/2.0, fov)]]
-    #    [(0, 0)]]
-
-    #fov = fov*0.99
-    #return [Ray(pos=ray, dir=ray) for ray in [(0.0, 0.0, -1.0),
-    #    (math.sin(fov), 0.0, -math.cos(fov)),
-    #    (-math.sin(fov), 0.0, -math.cos(fov)),
-    #    (0.0, math.sin(fov), -math.cos(fov)),
-    #    (0.0, -math.sin(fov), -math.cos(fov))]]
-
     rays = []
-    #tup = (math.sin(fov), 0.0, -math.cos(fov))
-    #rays.append(Ray(pos=tup, dir=tup))
     for i in range(0, 100):
         angle_step = (fov * 2.0) / 100.0
         angle = -fov + angle_step*float(i)
@@ -325,7 +318,7 @@ def _get_theta_from_point(principal_ray, h_arc_normal, v_arc_normal, point):
         theta = math.pi * 2.0 - theta
     return theta
 
-#TODO: this code with the non-(0,0,-1) principal ray is all untested. 
+#TODO: this code with any non-(0,0,-1) principal ray is all untested. 
 def create_new_arc(screen, principal_ray, point0, is_horizontal=None):
     """
     Given a screen and point, calculate the shape of the screen such that
@@ -351,12 +344,8 @@ def create_new_arc(screen, principal_ray, point0, is_horizontal=None):
         point_to_eye_vec = eye_to_point_vec * -1
         point_to_screen_vec = _normalize(pixel_point - point)
         surface_normal = _normalize((point_to_screen_vec + point_to_eye_vec) / 2.0)
-        #TODO: might want to reverse the order of these just to be more intuitive. I feel like positive t should move from the center outward
         derivative = _normalize(numpy.cross(surface_normal, arc_plane_normal))
         return derivative
-
-    #f(Point3D(-0.99991286, -34.10890065, 4.27389904), 0)
-    #f(Point3D(0.99991286, -34.10890065, 4.27389904), 0)
 
     #the set of t values for which we would like to have output.
     #t is a measure of distance along the surface of the screen.
@@ -408,28 +397,10 @@ def main():
     spine = create_new_arc(screen, principal_eye_vector, starting_point, is_horizontal=True)
     #create each of the arcs reaching off of the spine
     arcs = []
-    #for delta in (Point3D(0.0, 10.0, 0.0), Point3D(0.0, 0.0, 0.0), Point3D(0.0, -10.0, 0.0)):
-    #    arc = []
-    #    for point in spine:
-    #        arc.append(point + delta)
-    #    arcs.append(arc)
-    
-    #negp = Point3D(-0.99991286, 0.0, -59.98856816)
-    #posp = Point3D(0.99991286, 0.0, -59.98856816)
-    #negarc = create_new_arc(screen, principal_eye_vector, negp, is_horizontal=False)
-    #posarc = create_new_arc(screen, principal_eye_vector, posp, is_horizontal=False)
     for point in spine:
         arc = create_new_arc(screen, principal_eye_vector, point, is_horizontal=False)
-        
-        ##TODO: this is a total hack. something else is broken.
-        #if point[0] < 0.0:
-        #    arc = list(arc)
-        #    arc.reverse()
-        #    arc = numpy.array(arc)
-        
         arcs.append(arc)
         
-
     shell = create_shell(shell_distance, principal_eye_vector, shell_radius, arcs)
     detector = create_detector()
     raylist = create_rays(screen, fov)
