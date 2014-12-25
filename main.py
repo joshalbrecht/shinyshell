@@ -119,6 +119,8 @@ import scipy.integrate
 import rotation_matrix
 from meshsurface import MeshSurface
 
+FOCAL_LENGTH = 24.0
+
 #these are very simple classes. just an alias for a numpy array that gives a little more intentionality to the code
 def Point2D(*args):
     return numpy.array(args)
@@ -230,7 +232,7 @@ def create_shell(distance, principal_eye_vector, radius, arcs):
     shape = Circular(radius=radius)
     front_surface = MeshSurface(arcs, shape=shape, reflectivity=1.0)
     component = Component(surflist=[(front_surface, (0, 0, 0), (0, 0, 0))], material=schott["BK7"])
-    MirrorShell = namedtuple('MirrorShell', ['component', 'position', 'direction'])
+    MirrorShell = namedtuple('MirrorShell', ['component', 'position', 'rotations'])
     return MirrorShell(component, (0, 0, 0), (0, 0, 0))
 
 def create_detector():
@@ -239,8 +241,16 @@ def create_detector():
     """
     #25 mm is approximately the size of the human eye
     ccd = CCD(size=(25, 25), transparent=False)
-    Detector = namedtuple('Detector', ['ccd', 'position', 'direction'])
-    return Detector(ccd, (0, 0, 0), (0, 0, 0))
+    Detector = namedtuple('Detector', ['ccd', 'position', 'rotations'])
+    return Detector(ccd, (0, 0, FOCAL_LENGTH/2.0), (0, 0, 0))
+
+def create_cornea():
+    lens_radius = 14.4
+    surface1 = Spherical(1/lens_radius, Circular(radius=20.0))
+    surface2 = Spherical(1/lens_radius, Circular(radius=20.0))
+    lens = Component(surflist=[(surface1, (0, 0, 0), (0, 0, 0)), (surface2, (0, 0, 0), (0, math.pi, 0))], material=1.3)
+    Cornea = namedtuple('Cornea', ['lens', 'position', 'rotations'])
+    return Cornea(lens, (0, 0, -FOCAL_LENGTH/2.0), (0, 0, 0))
 
 def create_rays_from_screen(screen, fov):
     """
@@ -264,6 +274,13 @@ def create_rays_from_screen(screen, fov):
 #    return [Ray(pos=screen.vision_ray_to_pixel(AngleVector(theta, phi)), dir=screen.direction) \
 #            for (theta, phi) in \
 #            [(0, 0), (0, fov), (math.pi/2.0, fov), (math.pi, fov), (3.0*math.pi/2.0, fov)]]
+
+def create_rays_parallel_to_eye(screen, fov):
+    rays = []
+    for x in numpy.arange(-10, 10, 0.5):
+        for y in numpy.arange(-10, 10, 0.5):
+            rays.append( Ray(pos=(x, y, -30), dir=(0, 0, 1)) )
+    return rays
 
 def create_rays(screen, fov):
     """
@@ -418,10 +435,11 @@ def main():
         
     shell = create_shell(shell_distance, principal_eye_vector, shell_radius, arcs)
     detector = create_detector()
-    raylist = create_rays_from_screen(screen, fov)
+    raylist = create_rays_parallel_to_eye(screen, fov)
+    cornea = create_cornea()
 
     #assemble them into the system
-    system = System(complist=[screen.create_component(), shell, detector], n=1)
+    system = System(complist=[screen.create_component(), shell, detector, cornea], n=1)
     system.ray_add(raylist)
 
     #run the simulation
