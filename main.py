@@ -378,9 +378,9 @@ def create_new_arc(screen, principal_ray, point0, is_horizontal=None):
     arc_plane_normal = _get_arc_plane_normal(principal_ray, is_horizontal)
     def f(point, t):
         #TODO: return [0,0,0] if the point is not in front of the screen (since it would not be visible at all, we should stop tracing this surface)
-        eye_to_point_vec = _normalize(point)
-        phi = _normalized_vector_angle(principal_ray, eye_to_point_vec)
-        theta = _get_theta_from_point(principal_ray, h_arc_normal, v_arc_normal, point)
+        eye_to_point_vec = Point3D(0,0,-1)#_normalize(point)
+        phi = 0#_normalized_vector_angle(principal_ray, eye_to_point_vec)
+        theta = 0#_get_theta_from_point(principal_ray, h_arc_normal, v_arc_normal, point)
         pixel_point = screen.vision_ray_to_pixel(AngleVector(theta, phi))
         point_to_eye_vec = eye_to_point_vec * -1
         point_to_screen_vec = _normalize(pixel_point - point)
@@ -445,6 +445,7 @@ def main():
     shell = create_shell(shell_distance, principal_eye_vector, shell_radius, arcs)
     detector = create_detector()
     raylist = create_rays_from_screen(screen, fov)
+    #raylist = []
     iris = create_iris()
     cornea = create_cornea()
 
