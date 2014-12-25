@@ -246,9 +246,24 @@ def create_rays_from_screen(screen, fov):
     """
     For now, just make a bunch of light rays coming off of the screen.
     """
-    return [Ray(pos=screen.vision_ray_to_pixel(AngleVector(theta, phi)), dir=screen.direction) \
-            for (theta, phi) in \
-            [(0, 0), (0, fov), (math.pi/2.0, fov), (math.pi, fov), (3.0*math.pi/2.0, fov)]]
+    (theta, phi) = (0,0)
+    rotations = []
+    rays = []
+
+    for angle in range(-math.pi/2, math.pi/2, math.pi/164):
+        rotations.append(angle, 0, 0)
+        rotations.append(0, angle, 0)
+
+    for rot in rotations:
+        rot_mat = create_transform_matrix_from_rotations(rot)
+        rays.append(Ray(screen.vision_ray_to_pixel(AngleVector(theta, phi)), dir=rot_mat.dot(screen.direction)))
+
+    return rays
+
+    
+#    return [Ray(pos=screen.vision_ray_to_pixel(AngleVector(theta, phi)), dir=screen.direction) \
+#            for (theta, phi) in \
+#            [(0, 0), (0, fov), (math.pi/2.0, fov), (math.pi, fov), (3.0*math.pi/2.0, fov)]]
 
 def create_rays(screen, fov):
     """
