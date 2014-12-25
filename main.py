@@ -250,9 +250,9 @@ def create_rays_from_screen(screen, fov):
     rotations = []
     rays = []
 
-    for angle in range(-math.pi/2, math.pi/2, math.pi/164):
-        rotations.append(angle, 0, 0)
-        rotations.append(0, angle, 0)
+    for angle in numpy.arange(-math.pi/2.0, math.pi/2.0, math.pi/64.0):
+        rotations.append((angle, 0, 0))
+        rotations.append((0, angle, 0))
 
     for rot in rotations:
         rot_mat = create_transform_matrix_from_rotations(rot)
@@ -418,7 +418,7 @@ def main():
         
     shell = create_shell(shell_distance, principal_eye_vector, shell_radius, arcs)
     detector = create_detector()
-    raylist = create_rays(screen, fov)
+    raylist = create_rays_from_screen(screen, fov)
 
     #assemble them into the system
     system = System(complist=[screen.create_component(), shell, detector], n=1)
