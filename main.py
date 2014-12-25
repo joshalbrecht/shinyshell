@@ -2,7 +2,14 @@
 
 """
 Installation:
-sudo apt-get install python-wxgtk2.8 python-vtk
+sudo apt-get install python-wxgtk2.8 python-vtk cython
+sudo apt-get install subversion
+sudo apt-get install ipython build-essential python-numpy python-scipy python-matplotlib python-wxversion python-dev python-opengl
+svn checkout http://pyoptools.googlecode.com/svn/trunk/ pyoptools
+cd pyoptools
+sudo python setup.py install
+
+(instructions mostly from here http://pyoptools.googlecode.com/hg-history/c72e8881fda92f41754d668819c93b688df8c62c/doc/_build/html/install.html )
 
 A tool for exploring freeform optics in the context of a laser raster based head mounted display.
 
