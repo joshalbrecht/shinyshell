@@ -211,7 +211,7 @@ class Screen(object):
         :rtype: Point
         """
         point = self.pixel_distribution(vision_ray)
-        pixel = (point[0] * self.size[0]/2.0 * self.side_vector * -1.0) + \
+        pixel = (point[0] * self.size[0]/2.0 * self.side_vector) + \
                (point[1] * self.size[1]/2.0 * self.up_vector) + \
                self.position
         return pixel
@@ -259,9 +259,9 @@ def create_rays(screen, fov):
         angle_step = (fov * 2.0) / 100.0
         angle = -fov + angle_step*float(i)
         #horizontal fan of rays
-        #tup = (math.sin(angle), 0.0, -math.cos(angle))
+        tup = (math.sin(angle), 0.0, -math.cos(angle))
         #vertical fan of rays
-        tup = (0.0, math.sin(angle), -math.cos(angle))
+        #tup = (0.0, math.sin(angle), -math.cos(angle))
         rays.append(Ray(pos=(0,0,0), dir=tup))
     return rays
 
