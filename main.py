@@ -389,31 +389,37 @@ def create_new_arc(screen, principal_ray, point0, is_horizontal=None):
     v_arc_normal = _get_arc_plane_normal(principal_ray, False)
     
     def get_center(x, x_min, x_max, x_step):
-        print x, x_min, x_max, x_step
+#        print x, x_min, x_max, x_step
         centers = numpy.arange(x_min, x_max, x_step)
+#        print centers
+        # if surface is only divided into one piece, return that center
+        if len(centers) == 1:
+            return centers[0], 0
         for i in range(0, len(centers)-1):
             prev = centers[i]
             next = centers[i+1]
+#            print "iterating", i, prev, next, ((next + prev) / 2), x
+            # if x falls within a boundary, return the previous center
             if x < (next + prev) / 2.0:
                 return prev, i 
+        # if x is not less than any boundary, use last center
+        return centers[-1], len(centers)-1
             
     def find_center_given_phi_theta(phi, theta):
         fov = math.pi/4
-        bucketed_phi, bucket_num = get_center(phi, 0, fov/2.0, fov/40.0)
-        num_theta_buckets = ((bucket_num-1) * 15) + 1
-        bucketed_theta, _ = get_center(phi, 0, 2.0*math.pi, 2.0*math.pi/float(num_theta_buckets))
+#        print "Passing in phi"
+        bucketed_phi, bucket_num = get_center(phi, 0, fov, fov/40.0)
+#        print "bucket_num", bucket_num
+#        print "Passing in theta"
+        num_theta_buckets = ((bucket_num) * 10) + 1
+#        print "num theta buckets", num_theta_buckets
+        bucketed_theta, theta_index = get_center(theta, 0, 2.0*math.pi, 2.0*math.pi/float(num_theta_buckets))
         return bucketed_phi, bucketed_theta
     
     #def find_center_given_phi_theta(phi, theta):
     #    phi_centers = numpy.arange(0, screen.fov/2.0, screen.fov/40.0)
     #    phi_bounds = numpy.array(0, [(phi_centers[x+1]+phi_centers[x])/2 for x in range(0,len(phi_centers)-1)])
     #
-    #    # calculate theta given phi, picking some arbitrary constant to adjust
-    #    cons = 4
-    #    theta_incr = phi_bounds*(1/cons)
-    #    for theta in theta_incr:
-    #        code
-    #    
     #    theta = numpy.arange(0, 2*math.pi, theta_incr)
 
     #this function defines the derivative of the surface at any given point.
@@ -422,9 +428,9 @@ def create_new_arc(screen, principal_ray, point0, is_horizontal=None):
     arc_plane_normal = _get_arc_plane_normal(principal_ray, is_horizontal)
     def f(point, t):
         #TODO: return [0,0,0] if the point is not in front of the screen (since it would not be visible at all, we should stop tracing this surface)
-        #eye_to_point_vec = _normalize(point)
-        #phi = _normalized_vector_angle(principal_ray, eye_to_point_vec)
-        #theta = _get_theta_from_point(principal_ray, h_arc_normal, v_arc_normal, point)
+#        eye_to_point_vec = _normalize(point)
+#        phi = _normalized_vector_angle(principal_ray, eye_to_point_vec)
+#        theta = _get_theta_from_point(principal_ray, h_arc_normal, v_arc_normal, point)
         
         #eye_to_point_vec = Point3D(0,0,-1)
         #phi = 0
