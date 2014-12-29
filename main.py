@@ -276,8 +276,8 @@ def create_rays_from_screen(screen, fov):
     rotations = []
     rays = []
 
-    for xangle in numpy.arange(-math.pi/4.0, math.pi/4.0, math.pi/128.0):
-        for yangle in numpy.arange(-math.pi/4.0, math.pi/4.0, math.pi/128.0):
+    for xangle in numpy.arange(-fov/10, fov/10, fov/80):
+        for yangle in numpy.arange(-fov/10, fov/10, fov/80):
             rotations.append((xangle, yangle, 0))
 
     for rot in rotations:
@@ -389,16 +389,13 @@ def create_new_arc(screen, principal_ray, point0, is_horizontal=None):
     v_arc_normal = _get_arc_plane_normal(principal_ray, False)
     
     def get_center(x, x_min, x_max, x_step):
-#        print x, x_min, x_max, x_step
         centers = numpy.arange(x_min, x_max, x_step)
-#        print centers
         # if surface is only divided into one piece, return that center
         if len(centers) == 1:
             return centers[0], 0
         for i in range(0, len(centers)-1):
             prev = centers[i]
             next = centers[i+1]
-#            print "iterating", i, prev, next, ((next + prev) / 2), x
             # if x falls within a boundary, return the previous center
             if x < (next + prev) / 2.0:
                 return prev, i 
@@ -407,20 +404,11 @@ def create_new_arc(screen, principal_ray, point0, is_horizontal=None):
             
     def find_center_given_phi_theta(phi, theta):
         fov = math.pi/4
-#        print "Passing in phi"
-        bucketed_phi, bucket_num = get_center(phi, 0, fov, fov/40.0)
-#        print "bucket_num", bucket_num
-#        print "Passing in theta"
-        num_theta_buckets = ((bucket_num) * 10) + 1
-#        print "num theta buckets", num_theta_buckets
+        bucketed_phi, bucket_num = get_center(phi, 0, fov, fov/10.0)
+        num_theta_buckets = ((bucket_num) * 2) + 1
         bucketed_theta, theta_index = get_center(theta, 0, 2.0*math.pi, 2.0*math.pi/float(num_theta_buckets))
         return bucketed_phi, bucketed_theta
     
-    #def find_center_given_phi_theta(phi, theta):
-    #    phi_centers = numpy.arange(0, screen.fov/2.0, screen.fov/40.0)
-    #    phi_bounds = numpy.array(0, [(phi_centers[x+1]+phi_centers[x])/2 for x in range(0,len(phi_centers)-1)])
-    #
-    #    theta = numpy.arange(0, 2*math.pi, theta_incr)
 
     #this function defines the derivative of the surface at any given point.
     #simply the intersection of the arc plane and the required surface plane at that point
@@ -428,19 +416,19 @@ def create_new_arc(screen, principal_ray, point0, is_horizontal=None):
     arc_plane_normal = _get_arc_plane_normal(principal_ray, is_horizontal)
     def f(point, t):
         #TODO: return [0,0,0] if the point is not in front of the screen (since it would not be visible at all, we should stop tracing this surface)
-#        eye_to_point_vec = _normalize(point)
-#        phi = _normalized_vector_angle(principal_ray, eye_to_point_vec)
-#        theta = _get_theta_from_point(principal_ray, h_arc_normal, v_arc_normal, point)
-        
-        #eye_to_point_vec = Point3D(0,0,-1)
-        #phi = 0
-        #theta = 0
-        
+
+        # This section creates surface such that a ray from center of the eye hits the correct pixel on the screen
         eye_to_point_vec = _normalize(point)
         phi = _normalized_vector_angle(principal_ray, eye_to_point_vec)
         theta = _get_theta_from_point(principal_ray, h_arc_normal, v_arc_normal, point)
-        phi, theta = find_center_given_phi_theta(phi, theta)
-        eye_to_point_vec = angle_vector_to_vector(AngleVector(theta, phi), principal_ray)
+
+        # This section creates surface such that a cone of rays coming from a pixel on the screen is reflected in parallel rays toward the eye
+        # Assumes that screen is tilted at correct angle such that ray coming from eye center hits screen at perpendicular angle
+#        eye_to_point_vec = _normalize(point)
+#        phi = _normalized_vector_angle(principal_ray, eye_to_point_vec)
+#        theta = _get_theta_from_point(principal_ray, h_arc_normal, v_arc_normal, point)
+#        phi, theta = find_center_given_phi_theta(phi, theta)
+#        eye_to_point_vec = angle_vector_to_vector(AngleVector(theta, phi), principal_ray)
         
         pixel_point = screen.vision_ray_to_pixel(AngleVector(theta, phi))
         point_to_eye_vec = eye_to_point_vec * -1
@@ -473,13 +461,13 @@ def create_new_arc(screen, principal_ray, point0, is_horizontal=None):
     
     return numpy.array(result)
 
-def main():
+def main_3d():
     #create the main app
     app = wx.PySimpleApp()
 
     #system assumptions
     fov = math.pi / 4.0
-    screen_angle = math.pi / 8.0
+    screen_angle = math.pi / 4.0
     principal_eye_vector = Point3D(0.0, 0.0, -1.0)
 
     #create the components
@@ -497,6 +485,7 @@ def main():
     #create the main arc
     starting_point = principal_eye_vector * shell_distance
     spine = create_new_arc(screen, principal_eye_vector, starting_point, is_horizontal=True)
+    print spine
     #create each of the arcs reaching off of the spine
     arcs = []
     for point in spine:
@@ -505,7 +494,12 @@ def main():
         
     shell = create_shell(shell_distance, principal_eye_vector, shell_radius, arcs)
     detector = create_detector()
-    raylist = create_rays_from_screen(screen, fov)
+    raylist = create_rays_parallel_to_eye(screen, fov)
+
+    # add ray shooting out of center of eye for debugging
+    raylist.append(Ray(pos=(0, 0, 0), dir=(0, 0, -1)))
+
+
     #raylist = []
     iris = create_iris()
     cornea = create_cornea()
@@ -520,5 +514,136 @@ def main():
     spot_diagram(detector.ccd)
     app.MainLoop()
 
+
+############################################################
+# Drawing rays and surface in 2D to better understand optics
+############################################################
+
+def create_rays_from_screen_2d(screen, fov):
+    """
+    For now, just make a bunch of light rays coming off of the screen.
+    """
+    (theta, phi) = (0,0)
+    rotations = []
+    rays = []
+    for angle in numpy.arange(-fov/2, fov/2, fov/80):
+        rotations.append((angle, 0, 0))
+
+    for rot in rotations:
+        rot_mat = create_transform_matrix_from_rotations(rot)
+        rays.append(Ray(screen.vision_ray_to_pixel(AngleVector(theta, phi)), dir=rot_mat.dot(screen.direction)))
+    return rays
+
+
+#TODO: this code with any non-(0,0,-1) principal ray is all untested. 
+def create_new_arc_2d(screen, principal_ray, point0, is_horizontal=None):
+    """
+    Given a screen and point, calculate the shape of the screen such that
+    every vision ray gives a correct reflection to the corresponding pixel.
+    
+    Can either trace 'horizontally' or 'vertically' (relative to the principal ray)
+    """
+    
+    assert is_horizontal != None
+    h_arc_normal = _get_arc_plane_normal(principal_ray, True)
+    v_arc_normal = _get_arc_plane_normal(principal_ray, False)
+    
+    #this function defines the derivative of the surface at any given point.
+    #simply the intersection of the arc plane and the required surface plane at that point
+    #if there is no way to bounce to the front of the screen, the derivative is just 0
+    arc_plane_normal = _get_arc_plane_normal(principal_ray, is_horizontal)
+    def f(point, t):
+        #TODO: return [0,0,0] if the point is not in front of the screen (since it would not be visible at all, we should stop tracing this surface)
+        # This section creates surface such that a ray from center of the eye hits the correct pixel on the screen
+        eye_to_point_vec = _normalize(point)
+        phi = _normalized_vector_angle(principal_ray, eye_to_point_vec)
+        theta = _get_theta_from_point(principal_ray, h_arc_normal, v_arc_normal, point)
+
+        pixel_point = screen.vision_ray_to_pixel(AngleVector(theta, phi))
+        point_to_eye_vec = eye_to_point_vec * -1
+        point_to_screen_vec = _normalize(pixel_point - point)
+        surface_normal = _normalize((point_to_screen_vec + point_to_eye_vec) / 2.0)
+        derivative = _normalize(numpy.cross(surface_normal, arc_plane_normal))
+        return derivative
+
+    #the set of t values for which we would like to have output.
+    #t is a measure of distance along the surface of the screen.
+    #TODO: could do a better job of estimating how much t is required
+    #more t means that we're wasting time, less t means we might not quite finish defining the whole surface
+    #could probably be much more intelligent about this
+    t_step = 1.0
+    max_t = 80.0
+    t_values = numpy.arange(0.0, max_t, t_step)
+
+    #actually perform the numerical integration.
+    half_arc = scipy.integrate.odeint(f, point0, t_values)
+    
+    #do the other half as well:
+    def g(point, t):
+        return -1.0 * f(point, t)
+    
+    #actually perform the numerical integration.
+    other_half_arc = list(scipy.integrate.odeint(g, point0, t_values))
+    other_half_arc.pop(0)
+    other_half_arc.reverse()
+    result = other_half_arc + list(half_arc)
+    
+    return numpy.array(result)
+
+
+def main_2d():
+    #create the main app
+    app = wx.PySimpleApp()
+
+    #system assumptions
+    fov = math.pi / 4.0
+    screen_angle = math.pi / 4.0
+    principal_eye_vector = Point3D(0.0, 0.0, -1.0)
+
+    #create the components
+    screen_location = Point3D(0, 40.0, -20.0)
+    screen_rotation = Point3D(-screen_angle, 0, 0)
+    screen_size = Point2D(25.0, 25.0)
+    def pixel_distribution(vec):
+        r = vec.phi / fov
+        return Point2D(r*math.cos(vec.theta), r*math.sin(vec.theta))
+    screen = Screen(screen_location, screen_rotation, screen_size, pixel_distribution)
+
+    shell_distance = 60.0
+    shell_radius = 60.0
+    
+    # create the starting point, with 3 points so we actually have a surface
+    starting_point = principal_eye_vector * shell_distance
+    spine = numpy.array([
+        starting_point,
+        starting_point + Point3D(1, 0, 0),
+        starting_point + Point3D(-1, 0, 0)
+        ])
+    #create each of the arcs reaching off of the spine
+    arcs = []
+    for point in spine:
+        arc = create_new_arc_2d(screen, principal_eye_vector, point, is_horizontal=False)
+        arcs.append(arc)
+        
+    shell = create_shell(shell_distance, principal_eye_vector, shell_radius, arcs)
+    detector = create_detector()
+    raylist = create_rays_from_screen_2d(screen, fov)
+
+    #raylist = []
+    iris = create_iris()
+    cornea = create_cornea()
+
+    #assemble them into the system
+    system = System(complist=[screen.create_component(), shell, detector, cornea, iris], n=1)
+    system.ray_add(raylist)
+
+    #run the simulation
+    system.propagate()
+    glPlotFrame(system)
+    spot_diagram(detector.ccd)
+    app.MainLoop()    
+    
+
+
 if __name__ == '__main__':
-    main()
+    main_2d()
