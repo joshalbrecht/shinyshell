@@ -244,15 +244,16 @@ def create_shell(distance, principal_eye_vector, radius, arcs):
     MirrorShell = namedtuple('MirrorShell', ['component', 'position', 'rotations'])
     return MirrorShell(component, (0, 0, 0), (0, 0, 0))
 
-def create_detector(position, rotations):
+def create_detector(size, position, rotations):
     """
     For now, just make a CCD oriented along the principal ray, centered at the center of the eye
+    size is a tuple of length by width
 
     Returns surflist for Component class, in the form of (surface, (posX,posY,posZ), (rotX,rotY,rotZ))
     """
     #25 mm is approximately the size of the human eye
 #    ccd = CCD(size=(25, 25), transparent=False)
-    ccd = CCD(size=(300, 300), transparent=False)
+    ccd = CCD(size=size, transparent=False)
     Detector = namedtuple('Detector', ['ccd', 'position', 'rotations'])
 #    return Detector(ccd, (0, 0, FOCAL_LENGTH/2.0), (0, 0, 0))
     return Detector(ccd, position, rotations)
@@ -545,7 +546,7 @@ def create_rays_from_screen_center_2d(screen, fov):
     (theta, phi) = (0,0)
     rotations = []
     rays = []
-    for angle in numpy.arange(-fov/2, fov/2, fov/80):
+    for angle in numpy.arange(fov/8, fov/4, fov/32):
         rotations.append((angle, 0, 0))
 
     for rot in rotations:
@@ -595,7 +596,7 @@ def create_parallel_rays_from_eye_to_screen_2d(screen, fov):
         ]
     
     for ray in principal_eye_rays:
-        for x in numpy.arange(1, 3, 0.2):
+        for x in numpy.arange(1, 3, 0.5):
             rays.append(Ray(pos = origin+Point3D(0,x,0), dir = ray.dir))
             rays.append(Ray(pos = origin+Point3D(0,-x,0), dir = ray.dir))
 
@@ -631,8 +632,8 @@ def create_new_arc_2d(screen, principal_ray, point0, is_horizontal=None):
             
     def find_center_given_phi_theta(phi, theta):
         fov = math.pi/4
-        bucketed_phi, bucket_num = get_center(phi, 0, fov, fov/4.0)
-        num_theta_buckets = ((bucket_num) * 2) + 1
+        bucketed_phi, bucket_num = get_center(phi, 0, fov, fov/16.0)
+        num_theta_buckets = ((bucket_num) * 4) + 1
         bucketed_theta, theta_index = get_center(theta, 0, 2.0*math.pi, 2.0*math.pi/float(num_theta_buckets))
         return bucketed_phi, bucketed_theta
     
@@ -649,7 +650,7 @@ def create_new_arc_2d(screen, principal_ray, point0, is_horizontal=None):
         bucketed_phi, bucketed_theta = find_center_given_phi_theta(phi, theta)
         eye_to_point_vec = angle_vector_to_vector(AngleVector(bucketed_theta, bucketed_phi), principal_ray)
         
-        pixel_point = screen.vision_ray_to_pixel(AngleVector(theta, phi))
+        pixel_point = screen.vision_ray_to_pixel(AngleVector(bucketed_theta, bucketed_phi))
         point_to_eye_vec = eye_to_point_vec * -1
         point_to_screen_vec = _normalize(pixel_point - point)
         surface_normal = _normalize((point_to_screen_vec + point_to_eye_vec) / 2.0)
@@ -661,7 +662,7 @@ def create_new_arc_2d(screen, principal_ray, point0, is_horizontal=None):
     #TODO: could do a better job of estimating how much t is required
     #more t means that we're wasting time, less t means we might not quite finish defining the whole surface
     #could probably be much more intelligent about this
-    t_step = 1.0
+    t_step = 0.01
     max_t = 80.0
     t_values = numpy.arange(0.0, max_t, t_step)
 
@@ -699,7 +700,7 @@ def main_2d():
         # confused by your assumption here, pretty sure +theta goes toward +x from
         # +y axis...should be (r*math.sin(vec.theta), r*math.cos(vec.theta))
         # i flipped it here, fixed for me, change back if i'm wrong
-        return Point2D(r*math.sin(vec.theta), r*math.cos(vec.theta))
+        return Point2D(r*math.cos(vec.theta), r*math.sin(vec.theta))
     screen = Screen(screen_location, screen_rotation, screen_size, pixel_distribution)
 
     shell_distance = 80.0
@@ -708,9 +709,9 @@ def main_2d():
     # create the starting point, with 3 points so we actually have a surface
     starting_point = principal_eye_vector * shell_distance
     spine = numpy.array([
+        starting_point + Point3D(-1, 0, 0),
         starting_point,
-        starting_point + Point3D(1, 0, 0),
-        starting_point + Point3D(-1, 0, 0)
+        starting_point + Point3D(1, 0, 0),        
         ])
     #create each of the arcs reaching off of the spine
     arcs = []
@@ -719,8 +720,9 @@ def main_2d():
         arcs.append(arc)
         
     shell = create_shell(shell_distance, principal_eye_vector, shell_radius, arcs)
-    detector = create_detector(screen_location*3, screen_rotation)
-#    raylist = create_parallel_rays_from_eye_to_screen_2d(screen, fov)
+    detector = create_detector((500,500), screen_location*3, screen_rotation)
+#    detector = create_detector((25,25), (0,0,FOCAL_LENGTH/2.0), (0,0,0))
+    raylist = create_parallel_rays_from_eye_to_screen_2d(screen, fov)
 
     iris = create_iris()
     cornea = create_cornea()
@@ -734,9 +736,9 @@ def main_2d():
     system.propagate()
 
     # print reflected rays
-#    for ray in system.prop_ray:
-#        for child in ray.childs:
-#            print child.dir
+    for ray in system.prop_ray:
+        for child in ray.childs:
+            print child.dir
     
     glPlotFrame(system)
     spot_diagram(detector.ccd)
