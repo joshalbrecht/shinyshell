@@ -86,6 +86,7 @@ use('WXAgg')
 
 #wheee, monkey patches. simply made it so that any points in points_to_draw will be rendered as a little cross (3 intersecting lines)
 points_to_draw = []
+global_rays = []
 import wxRayTrace.gui.glplotframe
 def DrawPoint(self, point):
     """
@@ -243,14 +244,18 @@ def create_shell(distance, principal_eye_vector, radius, arcs):
     MirrorShell = namedtuple('MirrorShell', ['component', 'position', 'rotations'])
     return MirrorShell(component, (0, 0, 0), (0, 0, 0))
 
-def create_detector():
+def create_detector(position, rotations):
     """
     For now, just make a CCD oriented along the principal ray, centered at the center of the eye
+
+    Returns surflist for Component class, in the form of (surface, (posX,posY,posZ), (rotX,rotY,rotZ))
     """
     #25 mm is approximately the size of the human eye
-    ccd = CCD(size=(25, 25), transparent=False)
+#    ccd = CCD(size=(25, 25), transparent=False)
+    ccd = CCD(size=(300, 300), transparent=False)
     Detector = namedtuple('Detector', ['ccd', 'position', 'rotations'])
-    return Detector(ccd, (0, 0, FOCAL_LENGTH/2.0), (0, 0, 0))
+#    return Detector(ccd, (0, 0, FOCAL_LENGTH/2.0), (0, 0, 0))
+    return Detector(ccd, position, rotations)
 
 def create_cornea():
     surface_radius = 14.4
@@ -267,6 +272,21 @@ def create_iris():
     aperture = Component(surflist=[(surface, (0, 0, 0), (0, 0, 0))])
     Iris = namedtuple('Iris', ['aperture', 'position', 'rotations'])
     return Iris(aperture, (0, 0, -FOCAL_LENGTH/2.0), (0, 0, 0))
+
+def create_eye(look_direction):
+    """
+    Creates an eye that looks in the direction of look_direction.
+
+    attr look_direction: 
+    type 
+    
+    Returns tuple of 
+    """
+    iris = create_iris()
+    cornea = create_cornea()
+
+    return (iris, cornea)
+    
 
 def create_rays_from_screen(screen, fov):
     """
@@ -560,6 +580,8 @@ def create_parallel_rays_from_eye_to_screen_2d(screen, fov):
     """
     Creates a few sets of parallel rays from the center of the eye to the screen.
     Need to turn off eye lens to use this properly.
+
+    This helps determine where point source on screen should be relative to shell surface.
     """
     origin = Point3D(0, 0, 0)
     rotations = []
@@ -567,11 +589,13 @@ def create_parallel_rays_from_eye_to_screen_2d(screen, fov):
     principal_eye_rays = [
         Ray(pos = origin, dir = (0, 0, -1)),
         Ray(pos = origin, dir = (0, 1, -1)),
-        Ray(pos = origin, dir = (0, -1, -1)),
+        Ray(pos = origin, dir = (0, 0.5, -1)),
+        Ray(pos = origin, dir = (0, 0.2, -1)),        
+        Ray(pos = origin, dir = (0, -0.2, -1)),
         ]
     
     for ray in principal_eye_rays:
-        for x in range(1, 10):
+        for x in numpy.arange(1, 3, 0.2):
             rays.append(Ray(pos = origin+Point3D(0,x,0), dir = ray.dir))
             rays.append(Ray(pos = origin+Point3D(0,-x,0), dir = ray.dir))
 
@@ -590,20 +614,41 @@ def create_new_arc_2d(screen, principal_ray, point0, is_horizontal=None):
     assert is_horizontal != None
     h_arc_normal = _get_arc_plane_normal(principal_ray, True)
     v_arc_normal = _get_arc_plane_normal(principal_ray, False)
+
+    def get_center(x, x_min, x_max, x_step):
+        centers = numpy.arange(x_min, x_max, x_step)
+        # if surface is only divided into one piece, return that center
+        if len(centers) == 1:
+            return centers[0], 0
+        for i in range(0, len(centers)-1):
+            prev = centers[i]
+            next = centers[i+1]
+            # if x falls within a boundary, return the previous center
+            if x < (next + prev) / 2.0:
+                return prev, i 
+        # if x is not less than any boundary, use last center
+        return centers[-1], len(centers)-1
+            
+    def find_center_given_phi_theta(phi, theta):
+        fov = math.pi/4
+        bucketed_phi, bucket_num = get_center(phi, 0, fov, fov/4.0)
+        num_theta_buckets = ((bucket_num) * 2) + 1
+        bucketed_theta, theta_index = get_center(theta, 0, 2.0*math.pi, 2.0*math.pi/float(num_theta_buckets))
+        return bucketed_phi, bucketed_theta
     
     #this function defines the derivative of the surface at any given point.
     #simply the intersection of the arc plane and the required surface plane at that point
     #if there is no way to bounce to the front of the screen, the derivative is just 0
     arc_plane_normal = _get_arc_plane_normal(principal_ray, is_horizontal)
     def f(point, t):
-        #TODO: return [0,0,0] if the point is not in front of the screen (since it would not be visible at all, we should stop tracing this surface)
         # This section creates surface such that a ray from center of the eye hits the correct pixel on the screen
-
-        #eye_to_point_vec = _normalize(point)
-        eye_to_point_vec = Point3D(0, 0, -1)
+#        eye_to_point_vec = Point3D(0, 0, -1)
+        eye_to_point_vec = _normalize(point)
         phi = _normalized_vector_angle(principal_ray, eye_to_point_vec)
         theta = _get_theta_from_point(principal_ray, h_arc_normal, v_arc_normal, point)
-
+        bucketed_phi, bucketed_theta = find_center_given_phi_theta(phi, theta)
+        eye_to_point_vec = angle_vector_to_vector(AngleVector(bucketed_theta, bucketed_phi), principal_ray)
+        
         pixel_point = screen.vision_ray_to_pixel(AngleVector(theta, phi))
         point_to_eye_vec = eye_to_point_vec * -1
         point_to_screen_vec = _normalize(pixel_point - point)
@@ -657,8 +702,8 @@ def main_2d():
         return Point2D(r*math.sin(vec.theta), r*math.cos(vec.theta))
     screen = Screen(screen_location, screen_rotation, screen_size, pixel_distribution)
 
-    shell_distance = 60.0
-    shell_radius = 60.0
+    shell_distance = 80.0
+    shell_radius = 100.0
     
     # create the starting point, with 3 points so we actually have a surface
     starting_point = principal_eye_vector * shell_distance
@@ -674,18 +719,25 @@ def main_2d():
         arcs.append(arc)
         
     shell = create_shell(shell_distance, principal_eye_vector, shell_radius, arcs)
-    detector = create_detector()
-    raylist = create_rays_from_multiple_pixels_on_screen_2d(screen, fov)
+    detector = create_detector(screen_location*3, screen_rotation)
+#    raylist = create_parallel_rays_from_eye_to_screen_2d(screen, fov)
 
     iris = create_iris()
     cornea = create_cornea()
 
     #assemble them into the system
-    system = System(complist=[screen.create_component(), shell, detector, cornea, iris], n=1)
+#    system = System(complist=[screen.create_component(), shell, detector, cornea, iris], n=1)
+    system = System(complist=[screen.create_component(), shell, detector], n=1)
     system.ray_add(raylist)
 
     #run the simulation
     system.propagate()
+
+    # print reflected rays
+#    for ray in system.prop_ray:
+#        for child in ray.childs:
+#            print child.dir
+    
     glPlotFrame(system)
     spot_diagram(detector.ccd)
     app.MainLoop()    
