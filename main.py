@@ -485,7 +485,6 @@ def main_3d():
     #create the main arc
     starting_point = principal_eye_vector * shell_distance
     spine = create_new_arc(screen, principal_eye_vector, starting_point, is_horizontal=True)
-    print spine
     #create each of the arcs reaching off of the spine
     arcs = []
     for point in spine:
@@ -519,7 +518,7 @@ def main_3d():
 # Drawing rays and surface in 2D to better understand optics
 ############################################################
 
-def create_rays_from_screen_2d(screen, fov):
+def create_rays_from_screen_center_2d(screen, fov):
     """
     For now, just make a bunch of light rays coming off of the screen.
     """
@@ -533,6 +532,29 @@ def create_rays_from_screen_2d(screen, fov):
         rot_mat = create_transform_matrix_from_rotations(rot)
         rays.append(Ray(screen.vision_ray_to_pixel(AngleVector(theta, phi)), dir=rot_mat.dot(screen.direction)))
     return rays
+
+def create_rays_from_multiple_pixels_on_screen_2d(screen, fov):
+    """
+    Make light rays go in all directions from multiple pixels on screen.
+    """
+    # list of pixels based on theta, phi values
+    pixel_list = [
+        (0, 0),
+        (0, fov/2),
+        (0, fov)
+        ]
+    rotations = []
+    rays = []
+
+    for angle in numpy.arange(-fov/2, fov/2, fov/40):
+        rotations.append((angle, 0, 0))
+
+    for theta, phi in pixel_list:
+        for rot in rotations:
+            rot_mat = create_transform_matrix_from_rotations(rot)
+            rays.append(Ray(screen.vision_ray_to_pixel(AngleVector(theta, phi)), dir=rot_mat.dot(screen.direction)))
+    return rays
+
 
 def create_parallel_rays_from_eye_to_screen_2d(screen, fov):
     """
@@ -552,7 +574,6 @@ def create_parallel_rays_from_eye_to_screen_2d(screen, fov):
         for x in range(1, 10):
             rays.append(Ray(pos = origin+Point3D(0,x,0), dir = ray.dir))
             rays.append(Ray(pos = origin+Point3D(0,-x,0), dir = ray.dir))
-            print rays[-1].pos
 
     return rays + principal_eye_rays
         
@@ -578,8 +599,8 @@ def create_new_arc_2d(screen, principal_ray, point0, is_horizontal=None):
         #TODO: return [0,0,0] if the point is not in front of the screen (since it would not be visible at all, we should stop tracing this surface)
         # This section creates surface such that a ray from center of the eye hits the correct pixel on the screen
 
-        eye_to_point_vec = _normalize(point)
-        # eye_to_point_vec = Point3D(0, 0, -1)
+        #eye_to_point_vec = _normalize(point)
+        eye_to_point_vec = Point3D(0, 0, -1)
         phi = _normalized_vector_angle(principal_ray, eye_to_point_vec)
         theta = _get_theta_from_point(principal_ray, h_arc_normal, v_arc_normal, point)
 
@@ -630,7 +651,10 @@ def main_2d():
     screen_size = Point2D(25.0, 25.0)
     def pixel_distribution(vec):
         r = vec.phi / fov
-        return Point2D(r*math.cos(vec.theta), r*math.sin(vec.theta))
+        # confused by your assumption here, pretty sure +theta goes toward +x from
+        # +y axis...should be (r*math.sin(vec.theta), r*math.cos(vec.theta))
+        # i flipped it here, fixed for me, change back if i'm wrong
+        return Point2D(r*math.sin(vec.theta), r*math.cos(vec.theta))
     screen = Screen(screen_location, screen_rotation, screen_size, pixel_distribution)
 
     shell_distance = 60.0
@@ -651,15 +675,13 @@ def main_2d():
         
     shell = create_shell(shell_distance, principal_eye_vector, shell_radius, arcs)
     detector = create_detector()
-    raylist = create_parallel_rays_from_eye_to_screen_2d(screen, fov)
+    raylist = create_rays_from_multiple_pixels_on_screen_2d(screen, fov)
 
-    #raylist = []
-#    iris = create_iris()
-#    cornea = create_cornea()
+    iris = create_iris()
+    cornea = create_cornea()
 
     #assemble them into the system
-#    system = System(complist=[screen.create_component(), shell, detector, cornea, iris], n=1)
-    system = System(complist=[screen.create_component(), shell, detector], n=1)
+    system = System(complist=[screen.create_component(), shell, detector, cornea, iris], n=1)
     system.ray_add(raylist)
 
     #run the simulation
