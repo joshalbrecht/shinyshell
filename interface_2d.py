@@ -16,10 +16,42 @@ from main import Point3D, _normalize
 from OpenGL import GL, GLU
 from pyglet.gl import *
 
-class LineSegment(object):
-    def __init__(self, start, end, color=(1.0, 1.0, 1.0)):
+import math
+
+def dist2(v, w):
+    return sum(((math.pow(v[i] - w[i], 2) for i in range(0, len(v)))))
+
+def distToSegmentSquared(p, v, w):
+    l2 = dist2(v, w)
+    if (l2 == 0):
+        return dist2(p, v)
+    n = w - v
+    t = ((p - v).dot(n)) / l2
+    if (t < 0):
+        return dist2(p, v)
+    if (t > 1):
+        return dist2(p, w)
+    return dist2(p, v + t * n)
+
+def distToSegment(p, v, w):
+    return math.sqrt(distToSegmentSquared(p, v, w))
+
+class Ray(object):
+    def __init__(self, start, end):
         self._start = start
         self._end = end
+        
+    @property
+    def start(self): 
+        return self._start
+    
+    @property
+    def end(self): 
+        return self._end
+        
+class VisibleLineSegment(Ray):
+    def __init__(self, start, end, color=(1.0, 1.0, 1.0)):
+        Ray.__init__(self, start, end)
         self._color = color
         
     def render(self):
@@ -29,9 +61,9 @@ class LineSegment(object):
         glVertex3f(*self._end)
         glEnd()
 
-class Ray(LineSegment):
+class LightRay(VisibleLineSegment):
     def __init__(self, start, end):
-        LineSegment.__init__(self, start, end, color=(0.5, 0.5, 0.5))
+        VisibleLineSegment.__init__(self, start, end, color=(0.5, 0.5, 0.5))
 
 class SceneObject(object):
     """
@@ -39,11 +71,15 @@ class SceneObject(object):
     :attr change_handler: will be called if the position changes
     """
     
-    def __init__(self, pos=None, color=(1.0, 1.0, 1.0), change_handler=None):
+    scene_objects = []
+    
+    def __init__(self, pos=None, color=(1.0, 1.0, 1.0), change_handler=None, radius=1.0):
         assert pos != None, "Must define a position for a SceneObject"
         self._pos = pos
         self._color = color
         self._change_handler = change_handler
+        self.radius = radius
+        self.scene_objects.append(self)
         
     def on_change(self):
         if self._change_handler:
@@ -51,6 +87,12 @@ class SceneObject(object):
             
     def render(self):
         glColor3f(*self._color)
+        
+    def distance_to_ray(self, ray):
+        """
+        :returns: the min distance between self._pos and ray
+        """
+        return distToSegment(self._pos, ray.start, ray.end)
         
     @property
     def pos(self): 
@@ -60,6 +102,22 @@ class SceneObject(object):
     def pos(self, value): 
         self._pos = value
         self.on_change()
+        
+    @classmethod
+    def pick_object(cls, ray):
+        """
+        :returns: the thing that is closest to the ray, if anything was close enough for the bounding sphere to be intersected
+        :rtype: SceneObject
+        """
+        best_dist = float("inf")
+        best_obj = None
+        for obj in cls.scene_objects:
+            dist = obj.distance_to_ray(ray)
+            if dist < obj.radius:
+                if dist < best_dist:
+                    best_dist = dist
+                    best_obj = obj
+        return best_obj
 
 class ScreenPixel(SceneObject):
     def render(self):
@@ -116,9 +174,9 @@ class ShellSection(object):
         tangent = Point3D(0.0, -1.0 * surface_normal[2], surface_normal[1])
         start = self._shell.pos + tangent
         end = self._shell.pos - tangent
-        segment = LineSegment(start, end)
+        segment = VisibleLineSegment(start, end)
         self._shell.segments = [segment]
-        self._rays = [Ray(Point3D(0,0,0), self._shell.pos), Ray(self._shell.pos, self._pixel.pos)]
+        self._rays = [LightRay(Point3D(0,0,0), self._shell.pos), LightRay(self._shell.pos, self._pixel.pos)]
         
         #TODO: do the right thing
         #figure out the angle of the primary ray
@@ -190,15 +248,16 @@ class Window(pyglet.window.Window):
         self.click = None
         self.drag = False
         
-        print self._click_to_ray(x, y)
+        ray = self._click_to_ray(x, y)
+        print SceneObject.pick_object(ray)
         
     def _click_to_ray(self, x, y):
         model = GL.glGetDoublev(GL.GL_MODELVIEW_MATRIX)
         proj = GL.glGetDoublev(GL.GL_PROJECTION_MATRIX)
         view = GL.glGetIntegerv(GL.GL_VIEWPORT)
-        start = GLU.gluUnProject(x, y, 0.0, model=model, proj=proj, view=view)
-        end = GLU.gluUnProject(x, y, 1.0, model=model, proj=proj, view=view)
-        return (start, end)
+        start = Point3D(*GLU.gluUnProject(x, y, 0.0, model=model, proj=proj, view=view))
+        end = Point3D(*GLU.gluUnProject(x, y, 1.0, model=model, proj=proj, view=view))
+        return Ray(start, end)
 
     def render(self):
         self.clear()
