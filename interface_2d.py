@@ -2,6 +2,8 @@
 import pyglet
 from time import time, sleep
 
+from pyglet.gl import *
+
 class Window(pyglet.window.Window):
     def __init__(self, refreshrate):
         super(Window, self).__init__(vsync = False)
@@ -34,6 +36,16 @@ class Window(pyglet.window.Window):
 
     def render(self):
         self.clear()
+        
+        glClear(GL_COLOR_BUFFER_BIT)
+        glLoadIdentity()
+        gluLookAt(10, 0, 0, 0, 0, 0, 0, 1, 0)
+        glBegin(GL_TRIANGLES)
+        glVertex3f(0, 0, 0.0)
+        glVertex3f(0, 0, -2.0)
+        glVertex3f(0, 2.0, -2.0)
+        glEnd()
+        
         if time() - self.last >= 1:
             self.framerate.text = str(self.frames)
             self.frames = 0
@@ -42,6 +54,14 @@ class Window(pyglet.window.Window):
             self.frames += 1
         self.framerate.draw()
         self.flip()
+        
+    def on_resize(self, width, height):
+        glViewport(0, 0, width, height)
+        glMatrixMode(GL_PROJECTION)
+        glLoadIdentity()
+        gluPerspective(65, width / float(height), 0.1, 1000)
+        glMatrixMode(GL_MODELVIEW)
+        return pyglet.event.EVENT_HANDLED
 
     def on_close(self):
         self.alive = 0
