@@ -1,9 +1,130 @@
 #!/usr/bin/python
+
+"""
+Installation instructions: sudo pip install pyglet
+
+This is a hacked together application to directly manipulate the surface in 2D.
+
+All assumptions and coordinates are the same as in main.py. It's simply 2D because we're viewing a 3D scene from (zoom, 0, 0) looking at (0, 0, 0)
+"""
+
 import pyglet
 from time import time, sleep
 
+from main import Point3D, _normalize
+
 from OpenGL import GL, GLU
 from pyglet.gl import *
+
+class LineSegment(object):
+    def __init__(self, start, end, color=(1.0, 1.0, 1.0)):
+        self._start = start
+        self._end = end
+        self._color = color
+        
+    def render(self):
+        glBegin(GL_LINES)
+        glColor3f(*self._color)
+        glVertex3f(*self._start)
+        glVertex3f(*self._end)
+        glEnd()
+
+class Ray(LineSegment):
+    def __init__(self, start, end):
+        LineSegment.__init__(self, start, end, color=(0.5, 0.5, 0.5))
+
+class ShellSection(object):
+    """
+    :attr shell_pos: the position of the center of the shell (in real coordinates, mm)
+    :attr pixel_pos: the position of the pixel on the screen (in real coordinates, mm)
+    :attr num_rays: the number of parallel rays emitted by the eye
+    :attr pupil_radius: 1/2 of the width of the region that emits rays from the eye
+    
+    Note that when any of those attributes are set, the object will recalculate everything based on them
+    """
+    
+    def __init__(self, shell_pos, pixel_pos, num_rays, pupil_radius):
+        self._shell_pos = shell_pos
+        self._pixel_pos = pixel_pos
+        self._num_rays = num_rays
+        self._pupil_radius = pupil_radius
+        
+        #calculated attributes
+        self._rays = []
+        self._segments = []
+        
+        self._recalculate()
+        
+    def render(self):
+        """Draw the shell section, pixel, and rays"""
+        #draw the raws
+        for ray in self._rays:
+            ray.render()
+            
+        #draw the segments
+        for segment in self._segments:
+            segment.render()
+        
+        #draw the pixel
+        glBegin(GL_POINTS)
+        glVertex3f(*self.pixel_pos)
+        glEnd()
+        
+    def _recalculate(self):
+        """Update internal state when any of the interesting variables have changed"""
+        
+        #note: this is just a hacky implementation right now to see if things are generally working
+        point_to_eye = _normalize(Point3D(0,0,0) - self._shell_pos)
+        point_to_pixel = _normalize(self._pixel_pos - self._shell_pos)
+        surface_normal = _normalize((point_to_eye + point_to_pixel) / 2.0)
+        tangent = Point3D(0.0, -1.0 * surface_normal[2], surface_normal[1])
+        start = self._shell_pos + tangent
+        end = self._shell_pos - tangent
+        segment = LineSegment(start, end)
+        self._segments = [segment]
+        self._rays = [Ray(Point3D(0,0,0), self._shell_pos), Ray(self._shell_pos, self._pixel_pos)]
+        
+        #TODO: do the right thing
+        #figure out the angle of the primary ray
+        #define a vector field for the surface normals of the shell. They are completely constrained given the location of the pixel and the fact that the reflecting ray must be at a particular angle
+        #use that vector field to define the exact shape of the surface
+        #simply pre-create a list of rays and line segments for the shell (all to be rendered later)
+        
+    @property
+    def shell_pos(self): 
+        return self._shell_pos
+
+    @shell_pos.setter
+    def shell_pos(self, value): 
+        self._shell_pos = value
+        self._recalculate()
+        
+    @property
+    def pixel_pos(self): 
+        return self._pixel_pos
+
+    @pixel_pos.setter
+    def pixel_pos(self, value): 
+        self._pixel_pos = value
+        self._recalculate()
+        
+    @property
+    def num_rays(self): 
+        return self._num_rays
+
+    @num_rays.setter
+    def num_rays(self, value): 
+        self._num_rays = value
+        self._recalculate()
+        
+    @property
+    def pupil_radius(self): 
+        return self._pupil_radius
+
+    @pupil_radius.setter
+    def pupil_radius(self, value): 
+        self._pupil_radius = value
+        self._recalculate()
 
 class Window(pyglet.window.Window):
     def __init__(self, refreshrate):
@@ -15,6 +136,22 @@ class Window(pyglet.window.Window):
         self.refreshrate = refreshrate
         self.click = None
         self.drag = False
+        
+        self.zoom_distance = 100.0
+        
+        self.num_rays = 3
+        self.pupil_radius = 2.0
+        self.sections = []
+        
+        self.create_initial_sections()
+        
+    #TODO: someday can save and load sections as well perhaps, so we can resume after shutting down
+    def create_initial_sections(self):
+        """Initialize some semi-sensible sections"""
+        self.sections = []
+        self.sections.append(ShellSection(Point3D(0.0, 10.0, -70.0), Point3D(0.0, 40.0, -20.0), self.num_rays, self.pupil_radius))
+        self.sections.append(ShellSection(Point3D(0.0, 0.0, -60.0), Point3D(0.0, 40.0, -20.0), self.num_rays, self.pupil_radius))
+        self.sections.append(ShellSection(Point3D(0.0, -5.0, -50.0), Point3D(0.0, 40.0, -20.0), self.num_rays, self.pupil_radius))
 
     def on_draw(self):
         self.render()
@@ -50,12 +187,10 @@ class Window(pyglet.window.Window):
         
         glClear(GL_COLOR_BUFFER_BIT)
         glLoadIdentity()
-        gluLookAt(10, 0, 0, 0, 0, 0, 0, 1, 0)
-        glBegin(GL_TRIANGLES)
-        glVertex3f(0, 0, 0.0)
-        glVertex3f(0, 0, -2.0)
-        glVertex3f(0, 2.0, -2.0)
-        glEnd()
+        gluLookAt(self.zoom_distance, 0, 0, 0, 0, 0, 0, 1, 0)
+        
+        for section in self.sections:
+            section.render()
         
         if time() - self.last >= 1:
             self.framerate.text = str(self.frames)
@@ -81,12 +216,17 @@ class Window(pyglet.window.Window):
         while self.alive:
             self.render()
             # ----> Note: <----
-            #  Without self.dispatc_events() the screen will freeze
+            #  Without self.dispatch_events() the screen will freeze
             #  due to the fact that i don't call pyglet.app.run(),
             #  because i like to have the control when and what locks
             #  the application, since pyglet.app.run() is a locking call.
             event = self.dispatch_events()
             sleep(1.0/self.refreshrate)
+            
+def main():
+    win = Window(23) # set the fps
+    win.run()
 
-win = Window(23) # set the fps
-win.run()
+if __name__ == '__main__':
+    main()
+    
