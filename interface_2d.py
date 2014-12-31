@@ -36,6 +36,34 @@ def distToSegmentSquared(p, v, w):
 def distToSegment(p, v, w):
     return math.sqrt(distToSegmentSquared(p, v, w))
 
+class Plane(object):
+    def __init__(self, point, normal):
+        self._point = point
+        self._normal = normal
+        
+    # intersection function
+    def intersect_line(self, p0, p1, epsilon=0.0000001):
+        """
+        p0, p1: define the line    
+        return a Vector or None (when the intersection can't be found).
+        """
+    
+        u = p1 - p0
+        w = p0 - self._point
+        dot = self._normal.dot(u)
+    
+        if abs(dot) > epsilon:
+            # the factor of the point between p0 -> p1 (0 - 1)
+            # if 'fac' is between (0 - 1) the point intersects with the segment.
+            # otherwise:
+            #  < 0.0: behind p0.
+            #  > 1.0: infront of p1.
+            fac = -self._normal.dot(w) / dot
+            return p0 + u*fac
+        else:
+            # The segment is parallel to plane
+            return None
+
 class Ray(object):
     def __init__(self, start, end):
         self._start = start
@@ -213,6 +241,7 @@ class Window(pyglet.window.Window):
         self.click = None
         self.drag = False
         
+        self.selection = []
         self.zoom_distance = 100.0
         
         self.num_rays = 3
@@ -234,22 +263,31 @@ class Window(pyglet.window.Window):
 
     def on_mouse_press(self, x, y, button, modifiers):
         self.click = x,y
+        ray = self._click_to_ray(x, y)
+        self.selection = [SceneObject.pick_object(ray)]
 
     def on_mouse_drag(self, x, y, dx, dy, buttons, modifiers):
         if self.click:
             self.drag = True
             print 'Drag offset:',(dx,dy)
+            start_plane_location = self._mouse_to_work_plane(x, y)
+            end_plane_location = self._mouse_to_work_plane(x+dx, y+dy)
+            delta = end_plane_location - start_plane_location
+            for obj in self.selection:
+                obj.pos += delta
+                
+    def _mouse_to_work_plane(self, x, y):
+        ray = self._click_to_ray(x, y)
+        point = Plane(Point3D(0.0, 0.0, 0.0), Point3D(1.0, 0.0, 0.0)).intersect_line(ray.start, ray.end)
+        return point
 
     def on_mouse_release(self, x, y, button, modifiers):
         if not self.drag and self.click:
-            print 'You clicked here', self.click, 'Relese point:',(x,y)
+            print 'You clicked here', self.click, 'Release point:',(x,y)
         else:
-            print 'You draged from', self.click, 'to:',(x,y)
+            print 'You dragged from', self.click, 'to:',(x,y)
         self.click = None
         self.drag = False
-        
-        ray = self._click_to_ray(x, y)
-        print SceneObject.pick_object(ray)
         
     def _click_to_ray(self, x, y):
         model = GL.glGetDoublev(GL.GL_MODELVIEW_MATRIX)
