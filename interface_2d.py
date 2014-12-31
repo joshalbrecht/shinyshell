@@ -2,6 +2,7 @@
 import pyglet
 from time import time, sleep
 
+from OpenGL import GL, GLU
 from pyglet.gl import *
 
 class Window(pyglet.window.Window):
@@ -33,6 +34,16 @@ class Window(pyglet.window.Window):
             print 'You draged from', self.click, 'to:',(x,y)
         self.click = None
         self.drag = False
+        
+        print self._click_to_ray(x, y)
+        
+    def _click_to_ray(self, x, y):
+        model = GL.glGetDoublev(GL.GL_MODELVIEW_MATRIX)
+        proj = GL.glGetDoublev(GL.GL_PROJECTION_MATRIX)
+        view = GL.glGetIntegerv(GL.GL_VIEWPORT)
+        start = GLU.gluUnProject(x, y, 0.0, model=model, proj=proj, view=view)
+        end = GLU.gluUnProject(x, y, 1.0, model=model, proj=proj, view=view)
+        return (start, end)
 
     def render(self):
         self.clear()
