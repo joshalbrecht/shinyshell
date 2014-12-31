@@ -632,11 +632,11 @@ def create_new_arc_2d(screen, principal_ray, point0, is_horizontal=None):
             
     def find_center_given_phi_theta(phi, theta):
         fov = math.pi/4
-        bucketed_phi, bucket_num = get_center(phi, 0, fov, fov/16.0)
+        bucketed_phi, bucket_num = get_center(phi, 0, fov, fov/30.0)
         #num_theta_buckets = ((bucket_num) * 4) + 1
         #bucketed_theta, theta_index = get_center(theta, 0, 2.0*math.pi, 2.0*math.pi/float(num_theta_buckets))
         bucketed_theta = math.pi / 2.0
-        if theta > 2.0 * math.pi:
+        if theta > math.pi:
             bucketed_theta = 3.0 * math.pi / 2.0
         return bucketed_phi, bucketed_theta
     
@@ -695,7 +695,7 @@ def main_2d():
     principal_eye_vector = Point3D(0.0, 0.0, -1.0)
 
     #create the components
-    screen_location = Point3D(0, 40.0, -20.0)
+    screen_location = Point3D(0, 40.0, -20.0)#Point3D(0.0, 0.0, 0.0)
     screen_rotation = Point3D(-screen_angle, 0, 0)
     screen_size = Point2D(25.0, 25.0)
     def pixel_distribution(vec):
