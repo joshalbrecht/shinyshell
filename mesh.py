@@ -1,11 +1,11 @@
 
 
 import vtk
-
 import numpy
-
 import pyglet.gl
 import pyglet.graphics
+
+import optics
 
 def mesh_from_arcs(arcs):
     #create all of the points so they have sensible, shared indices
@@ -46,6 +46,47 @@ def mesh_from_arcs(arcs):
     trianglePolyData.Update()
 
     return trianglePolyData
+
+def trim_mesh_with_cone(mesh, cone_point, cone_normal, cone_radius):
+    """
+    returns a mesh that contains only the triangles that where inside of the cone
+    """
+    cone_end = cone_point + cone_normal*100.0
+    def inside_cone(point):
+        return optics.distToLineSquared(point, cone_point, cone_end) < cone_radius*cone_radius
+    
+    points = mesh.GetPoints().GetData()
+    cell_array = mesh.GetPolys()
+    polygons = cell_array.GetData()
+    triangles = vtk.vtkCellArray()
+    for i in xrange(0,  cell_array.GetNumberOfCells()):
+        triangle = [polygons.GetValue(j) for j in xrange(i*4+1, i*4+4)]
+        a = points.GetTuple(triangle[0])
+        b = points.GetTuple(triangle[1])
+        c = points.GetTuple(triangle[2])
+        if inside_cone(a) and inside_cone(b) and inside_cone(c):
+            cell = vtk.vtkTriangle()
+            pointIds = cell.GetPointIds()
+            pointIds.SetId(0, triangle[0])
+            pointIds.SetId(1, triangle[1])
+            pointIds.SetId(2, triangle[2])
+            triangles.InsertNextCell(cell)
+            
+    # Create a polydata object
+    trianglePolyData = vtk.vtkPolyData()
+
+    # Add the geometry and topology to the polydata
+    trianglePolyData.SetPoints(mesh.GetPoints())
+    trianglePolyData.SetPolys(triangles)
+    trianglePolyData.Update()
+    
+    #run the clean function here to remove the points that are not used
+    cleanPolyData = vtk.vtkCleanPolyData()
+    cleanPolyData.SetInput(trianglePolyData)
+    cleanPolyData.Update()
+    trimmed_mesh = cleanPolyData.GetOutput()
+
+    return trimmed_mesh
 
 class Mesh(object):
     """
@@ -102,7 +143,9 @@ class Mesh(object):
                     c[0], c[1], c[2]
                 )))
         pyglet.gl.glColor3f(1.0, 1.0, 1.0)
+        pyglet.gl.glPolygonMode(pyglet.gl.GL_FRONT_AND_BACK, pyglet.gl.GL_LINE)
         self._batch.draw()
+        pyglet.gl.glPolygonMode(pyglet.gl.GL_FRONT_AND_BACK, pyglet.gl.GL_FILL)
         
     def intersection_plus_normal(self, start, end):
         """

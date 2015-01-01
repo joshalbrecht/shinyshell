@@ -3,6 +3,8 @@
 Shared code between main.py and interface.py.
 """
 
+import math
+
 import numpy
 from collections import namedtuple
 import rotation_matrix
@@ -93,3 +95,29 @@ def angle_vector_to_vector(angle_vec, principal_ray):
     ray = phi_rot.dot(principal_ray)
     theta_rot = create_transform_matrix_from_rotations((0,0,angle_vec.theta))
     return theta_rot.dot(ray)
+
+def dist2(v, w):
+    return sum(((math.pow(v[i] - w[i], 2) for i in range(0, len(v)))))
+
+def distToLineSquared(p, v, w):
+    l2 = dist2(v, w)
+    if (l2 == 0):
+        return dist2(p, v)
+    n = w - v
+    t = ((p - v).dot(n)) / l2
+    return dist2(p, v + t * n)
+
+def distToSegmentSquared(p, v, w):
+    l2 = dist2(v, w)
+    if (l2 == 0):
+        return dist2(p, v)
+    n = w - v
+    t = ((p - v).dot(n)) / l2
+    if (t < 0):
+        return dist2(p, v)
+    if (t > 1):
+        return dist2(p, w)
+    return dist2(p, v + t * n)
+
+def distToSegment(p, v, w):
+    return math.sqrt(distToSegmentSquared(p, v, w))

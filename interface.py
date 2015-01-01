@@ -27,31 +27,13 @@ import numpy
 import scipy.integrate
 
 import rotation_matrix
-from optics import Point3D, _normalize, _normalized_vector_angle, _get_arc_plane_normal, angle_vector_to_vector, AngleVector
+from optics import Point3D, _normalize, _normalized_vector_angle, _get_arc_plane_normal, angle_vector_to_vector, AngleVector, distToSegment
 import mesh
 
 #TODO: use the pyglet codes here instead
 LEFT_MOUSE_BUTTON_CODE = 1L
 MIDDLE_MOUSE_BUTTON_CODE = 2L
 RIGHT_MOUSE_BUTTON_CODE = 4L
-
-def dist2(v, w):
-    return sum(((math.pow(v[i] - w[i], 2) for i in range(0, len(v)))))
-
-def distToSegmentSquared(p, v, w):
-    l2 = dist2(v, w)
-    if (l2 == 0):
-        return dist2(p, v)
-    n = w - v
-    t = ((p - v).dot(n)) / l2
-    if (t < 0):
-        return dist2(p, v)
-    if (t > 1):
-        return dist2(p, w)
-    return dist2(p, v + t * n)
-
-def distToSegment(p, v, w):
-    return math.sqrt(distToSegmentSquared(p, v, w))
 
 class Plane(object):
     def __init__(self, point, normal):
@@ -555,8 +537,10 @@ def make_scale(principal_ray, shell_point, screen_point, light_radius, angle_vec
         ribs.append(rib)
         
     scale = mesh.Mesh(mesh.mesh_from_arcs(ribs))
-    scale.export("temp.stl")
-    return scale
+    #scale.export("temp.stl")
+    trimmed_scale = mesh.Mesh(mesh.trim_mesh_with_cone(scale._mesh, Point3D(0.0, 0.0, 0.0), _normalize(shell_point), light_radius))
+    #trimmed_scale.export("temp.stl")
+    return trimmed_scale
     
 #TODO: this might actually need to be part of make_scale, can't see a case where we would not want it
 #TODO: change phi and theta into an angle_vec. actually we dont even need them
