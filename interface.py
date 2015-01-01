@@ -18,7 +18,7 @@ middle mouse roll to zoom
 import pyglet
 from time import time, sleep
 
-from main import Point3D, _normalize, _normalized_vector_angle, _get_arc_plane_normal, angle_vector_to_vector, AngleVector
+from optics import Point3D, _normalize, _normalized_vector_angle, _get_arc_plane_normal, angle_vector_to_vector, AngleVector
 
 from OpenGL import GL, GLU
 from pyglet.gl import *
@@ -239,7 +239,7 @@ class ShellSection(object):
         else:
             theta = math.pi / 2.0
         
-        shell_points = create_arc(principal_ray, self._shell.pos, self._pixel.pos, self.pupil_radius, AngleVector(theta, phi), isHorizontal=False)
+        shell_points = create_arc(principal_ray, self._shell.pos, self._pixel.pos, self.pupil_radius, AngleVector(theta, phi), is_horizontal=False)
         
         #create all of the segments
         segments = [VisibleLineSegment(shell_points[i-1], shell_points[i]) for i in range(1, len(shell_points))]
@@ -475,13 +475,13 @@ class Mesh(object):
     def __init__(self):
         pass
     
-def create_arc(principal_ray, shell_point, screen_point, light_radius, angle_vec, isHorizontal=None):
-    assert isHorizontal != None, "Must pass this parameter"
+def create_arc(principal_ray, shell_point, screen_point, light_radius, angle_vec, is_horizontal=None):
+    assert is_horizontal != None, "Must pass this parameter"
     
     #define a vector field for the surface normals of the shell.
     #They are completely constrained given the location of the pixel and the fact
     #that the reflecting ray must be at a particular angle        
-    arc_plane_normal = _get_arc_plane_normal(principal_ray, isHorizontal)
+    arc_plane_normal = _get_arc_plane_normal(principal_ray, is_horizontal)
     desired_light_direction_off_screen_towards_eye = -1.0 * angle_vector_to_vector(angle_vec, principal_ray)
     def f(point, t):
         point_to_screen_vec = _normalize(screen_point - point)
@@ -522,7 +522,13 @@ def make_scale(principal_ray, shell_point, screen_point, light_radius, angle_vec
     returns a non-trimmed scale patch based on the point (where the shell should be centered)
     angle_vec is passed in for our convenience, even though it is duplicate information (given the shell_point)
     """
-    
+    spine = create_arc(principal_ray, shell_point, screen_point, light_radius, angle_vec, is_horizontal=False)
+    ribs = []
+    for point in spine:
+        rib = create_arc(principal_ray, shell_point, screen_point, light_radius, angle_vec, is_horizontal=True)
+        ribs.append(rib)
+        
+    shell = create_shell(shell_distance, principal_eye_vector, shell_radius, ribs)
     
 
 #TODO: this might actually need to be part of make_scale, can't see a case where we would not want it
