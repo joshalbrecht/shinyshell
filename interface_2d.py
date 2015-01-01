@@ -226,50 +226,13 @@ class ShellSection(object):
         principal_ray = Point3D(0.0, 0.0, -1.0)
         
         #figure out the angle of the primary ray
-        fixed_phi = _normalized_vector_angle(principal_ray, _normalize(self._shell.pos))
+        phi = _normalized_vector_angle(principal_ray, _normalize(self._shell.pos))
+        if self._shell.pos[1] < 0.0:
+            theta = 3.0 * math.pi / 2.0
+        else:
+            theta = math.pi / 2.0
         
-        #define a vector field for the surface normals of the shell.
-        #They are completely constrained given the location of the pixel and the fact
-        #that the reflecting ray must be at a particular angle        
-        arc_plane_normal = _get_arc_plane_normal(principal_ray, False)
-        def f(point, t):
-            if point[1] > 0.0:
-                theta = 3.0 * math.pi / 2.0
-            else:
-                theta = math.pi / 2.0
-            eye_to_point_vec = angle_vector_to_vector(AngleVector(theta, fixed_phi), principal_ray)
-            
-            point_to_eye_vec = eye_to_point_vec * -1
-            point_to_screen_vec = _normalize(self._pixel.pos - point)
-            surface_normal = _normalize((point_to_screen_vec + point_to_eye_vec) / 2.0)
-            derivative = _normalize(numpy.cross(surface_normal, arc_plane_normal))
-            return derivative
-        
-        #estimate how long the piece of the shell will be (the one that is large enough to reflect all rays)
-        #overestimates will waste time, underestimates cause it to crash :-P
-        #note that we're doing this one half at a time
-        def estimate_t_values():
-            #TODO: make this faster if necessary by doing the following:
-                #define the simple line that reflects the primary ray
-                #intersect that with the max and min rays from the eye
-                #check the distance between those intersections and double it or something
-            t_step = 0.2
-            max_t = 5.0
-            return numpy.arange(0.0, max_t, t_step)
-        t_values = estimate_t_values()
-    
-        #use the vector field to define the exact shape of the surface (first half)
-        half_arc = scipy.integrate.odeint(f, self._shell.pos, t_values)
-        
-        #do the other half as well
-        def g(point, t):
-            return -1.0 * f(point, t)
-        
-        #combine them
-        other_half_arc = list(scipy.integrate.odeint(g, self._shell.pos, t_values))
-        other_half_arc.pop(0)
-        other_half_arc.reverse()
-        shell_points = other_half_arc + list(half_arc)
+        shell_points = create_arc(principal_ray, self._shell.pos, self._pixel.pos, self.pupil_radius, AngleVector(theta, phi), isHorizontal=False)
         
         #create all of the segments
         segments = [VisibleLineSegment(shell_points[i-1], shell_points[i]) for i in range(1, len(shell_points))]
@@ -358,8 +321,13 @@ class Window(pyglet.window.Window):
         self.num_rays = 3
         self.pupil_radius = 2.0
         self.sections = []
-        
         self.create_initial_sections()
+        
+        initial_shell_point = Point3D(0.0, 0.0, -60.0)
+        initial_screen_point = Point3D(0.0, 40.0, -20.0)
+        principal_ray = Point3D(0.0, 0.0, -1.0)
+        self.scales = []
+        #self.scales = create_surface_via_scales(initial_shell_point, initial_screen_point, principal_ray)
         
     #TODO: someday can save and load sections as well perhaps, so we can resume after shutting down
     def create_initial_sections(self):
@@ -395,7 +363,6 @@ class Window(pyglet.window.Window):
         start_plane_location = self._mouse_to_work_plane(x, y)
         end_plane_location = self._mouse_to_work_plane(x+dx, y+dy)
         delta = end_plane_location - start_plane_location
-        print delta
         
         if self.left_click:
             for obj in self.selection:
@@ -462,6 +429,9 @@ class Window(pyglet.window.Window):
         
         for section in self.sections:
             section.render()
+            
+        for scale in self.scales:
+            scale.render()
         
         if time() - self.last >= 1:
             self.framerate.text = str(self.frames)
@@ -494,6 +464,139 @@ class Window(pyglet.window.Window):
             event = self.dispatch_events()
             sleep(1.0/self.refreshrate)
             
+class Mesh(object):
+    def __init__(self):
+        pass
+    
+def create_arc(principal_ray, shell_point, screen_point, light_radius, angle_vec, isHorizontal=None):
+    assert isHorizontal != None, "Must pass this parameter"
+    
+    #define a vector field for the surface normals of the shell.
+    #They are completely constrained given the location of the pixel and the fact
+    #that the reflecting ray must be at a particular angle        
+    arc_plane_normal = _get_arc_plane_normal(principal_ray, isHorizontal)
+    desired_light_direction_off_screen_towards_eye = -1.0 * angle_vector_to_vector(angle_vec, principal_ray)
+    def f(point, t):
+        point_to_screen_vec = _normalize(screen_point - point)
+        surface_normal = _normalize((point_to_screen_vec + desired_light_direction_off_screen_towards_eye) / 2.0)
+        derivative = _normalize(numpy.cross(surface_normal, arc_plane_normal))
+        return derivative
+    
+    #TODO: this should really be based on light_radius...
+    
+    #estimate how long the piece of the shell will be (the one that is large enough to reflect all rays)
+    #overestimates will waste time, underestimates cause it to crash :-P
+    #note that we're doing this one half at a time
+    def estimate_t_values():
+        #TODO: make this faster if necessary by doing the following:
+            #define the simple line that reflects the primary ray
+            #intersect that with the max and min rays from the eye
+            #check the distance between those intersections and double it or something
+        t_step = 0.2
+        max_t = 5.0
+        return numpy.arange(0.0, max_t, t_step)
+    t_values = estimate_t_values()
+
+    #use the vector field to define the exact shape of the surface (first half)
+    half_arc = scipy.integrate.odeint(f, shell_point, t_values)
+    
+    #do the other half as well
+    def g(point, t):
+        return -1.0 * f(point, t)
+    
+    #combine them
+    other_half_arc = list(scipy.integrate.odeint(g, shell_point, t_values))
+    other_half_arc.pop(0)
+    other_half_arc.reverse()
+    return other_half_arc + list(half_arc)
+    
+def make_scale(principal_ray, shell_point, screen_point, light_radius, angle_vec):
+    """
+    returns a non-trimmed scale patch based on the point (where the shell should be centered)
+    angle_vec is passed in for our convenience, even though it is duplicate information (given the shell_point)
+    """
+    
+    
+
+#TODO: this might actually need to be part of make_scale, can't see a case where we would not want it
+#TODO: change phi and theta into an angle_vec. actually we dont even need them
+def trim_scale(scale, phi, theta, light_radius):
+    """
+    returns a new scale without a bunch of triangles
+    specifically trims all of the triangles that fall outside of the cylinder (n=angle_vec, p=0,0,0, r=light_radius)
+    """
+    #should be pretty easy--just get distance_sq to middle line. if greater than r^2, should be dropped
+    return scale
+    
+#NOTE: we're going to need to make a nice test setup to see if this works like I would expect
+def calculate_error(scale, reference_scale):
+    """
+    I guess shoot rays all over the scale (from the pixel location), and see which also hit the reference scale, and get the distance
+    least squares? or just sum all of it? I wonder why people use least squares all the time...
+    note: will have to be average error per sample point, since different shells will have different number of sample points
+    question is just whether to average the squares, or regularize them
+    """
+    
+def create_scale(phi, theta, prev_scale, principal_ray, dist_range, spacing_range):
+    """
+    actually creates a whole bunch of scales, evaluates each, and returns the best
+    """
+    #make a bunch of possible pixel locations (within the ranges)
+    #for each pixel location:
+        #find the shell distance that minimizes the error (subdivision search)
+        #if that minimal error is the best so far, remember
+    
+def create_surface_via_scales(initial_shell_point, initial_screen_point, principal_ray):
+    """
+    Imagine a bunch of fish scales. Each represent a section of the shell, focused correctly for one pixel (eg, producing
+    parallel rays heading towards the eye). By making a bunch of these, and adjusting the pixel locations so that they all line up,
+    we should be able to make a surface that works well.
+    
+    Basic algorithm is a greedy one. Starting from the center scale, work outwards. Creates a hexagonal sort of mesh of these scales.
+    Ask Josh for more details.
+    """
+    
+    #based on the fact that your pupil is approximately this big
+    #basically defines how big the region is that we are trying to put in focus with a given scale
+    parallel_light_cylinder_radius = 3.0
+    fov = math.pi / 2.0
+    #per whole the screen. So 90 steps for a 90 degree total FOV would be one step per degree
+    total_phi_steps = 90
+    
+    #calculated:
+    total_vertical_resolution = 2000
+    min_pixel_spot_size = 0.005
+    min_spacing = (float(total_vertical_resolution) / float(total_phi_steps)) * min_pixel_spot_size
+    max_pixel_spot_size = 0.015
+    max_spacing = (float(total_vertical_resolution) / float(total_phi_steps)) * max_pixel_spot_size
+    
+    #create the first scale
+    scale = make_scale(principal_ray, initial_shell_point, initial_screen_point, AngleVector(0.0, 0.0))
+    center_scale = trim_scale(scale, 0, 0, parallel_light_cylinder_radius)
+    scales = [center_scale]
+    
+    ##for now, we're just going to go up and down so we can visualize in 2D
+    #prev_scale = center_scale
+    #theta = math.pi / 2.0
+    #assert num_phi_steps % 2 == 0, "Please just make it even so that it works nicely for both halves"
+    #phi_values = numpy.linspace(0, fov / 2.0, num=num_phi_steps/2)[1:]
+    #for phi in phi_values:
+    #    #TODO: those distance ranges are completely arbitrary (they define curvature).
+    #    #should really pull them out into a more sensible parameter
+    #    scale = create_scale(phi, theta, prev_scale, principal_ray, dist_range=(-1.0, 2.0), spacing_range=(min_spacing, max_spacing))
+    #    scales.append(scale)
+    #    prev_scale = scale
+    
+    #TODO: create all of the rows instead of just going up
+    ##create the row right, then left
+    #grid = numpy.zeros(())
+    #for i in range():
+    #    scale = create_optimal_scale(phi, theta, scale_to_optimize_against, principal_ray, pixel_bounds)
+    ##extend upward (dual create row because every odd and even row are different)
+    ##extend downward
+    
+    return scales
+
 def main():
     win = Window(23) # set the fps
     win.run()
