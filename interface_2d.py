@@ -347,11 +347,12 @@ class Window(pyglet.window.Window):
         self.last = time()
         self.alive = 1
         self.refreshrate = refreshrate
-        self.click = None
-        self.drag = False
+        self.left_click = None
+        self.middle_click = None
         
         self.selection = []
         self.zoom_distance = 100.0
+        self.focal_point = Point3D(0,0,0)
         
         self.num_rays = 3
         self.pupil_radius = 2.0
@@ -374,27 +375,31 @@ class Window(pyglet.window.Window):
         if button == RIGHT_MOUSE_BUTTON_CODE:
             location = self._mouse_to_work_plane(x, y)
             self.sections.append(ShellSection(location, Point3D(0.0, 40.0, -20.0), self.num_rays, self.pupil_radius))
-            return
+            
+        elif button == LEFT_MOUSE_BUTTON_CODE:
+            self.left_click = x,y
         
-        self.click = x,y
-        
-        #pyglet.window.key.MOD_SHIFT
-        ray = self._click_to_ray(x, y)
-        obj = SceneObject.pick_object(ray)
-        if obj:
-            self.selection = [obj]
-        else:
-            self.selection = []
+            #pyglet.window.key.MOD_SHIFT
+            ray = self._click_to_ray(x, y)
+            obj = SceneObject.pick_object(ray)
+            if obj:
+                self.selection = [obj]
+            else:
+                self.selection = []
+                
+        elif button == MIDDLE_MOUSE_BUTTON_CODE:
+            self.middle_click = x,y
 
     def on_mouse_drag(self, x, y, dx, dy, buttons, modifiers):
-        if self.click:
-            self.drag = True
-            print 'Drag offset:',(dx,dy)
-            start_plane_location = self._mouse_to_work_plane(x, y)
-            end_plane_location = self._mouse_to_work_plane(x+dx, y+dy)
-            delta = end_plane_location - start_plane_location
+        start_plane_location = self._mouse_to_work_plane(x, y)
+        end_plane_location = self._mouse_to_work_plane(x+dx, y+dy)
+        delta = end_plane_location - start_plane_location
+        
+        if self.left_click:
             for obj in self.selection:
                 obj.pos += delta
+        if self.middle_click:
+            self.focal_point += delta
                 
     def _mouse_to_work_plane(self, x, y):
         ray = self._click_to_ray(x, y)
@@ -402,12 +407,10 @@ class Window(pyglet.window.Window):
         return point
 
     def on_mouse_release(self, x, y, button, modifiers):
-        if not self.drag and self.click:
-            print 'You clicked here', self.click, 'Release point:',(x,y)
-        else:
-            print 'You dragged from', self.click, 'to:',(x,y)
-        self.click = None
-        self.drag = False
+        if button == LEFT_MOUSE_BUTTON_CODE:
+            self.left_click = None
+        elif button == MIDDLE_MOUSE_BUTTON_CODE:
+            self.middle_click = None
         
     def _click_to_ray(self, x, y):
         model = GL.glGetDoublev(GL.GL_MODELVIEW_MATRIX)
@@ -417,12 +420,35 @@ class Window(pyglet.window.Window):
         end = Point3D(*GLU.gluUnProject(x, y, 1.0, model=model, proj=proj, view=view))
         return Ray(start, end)
 
+    def _draw_axis(self):
+        axis_len = 10.0
+        
+        glBegin(GL_LINES)
+        
+        glColor3f(1.0, 0.0, 0.0)
+        glVertex3f(0.0, 0.0, 0.0)
+        glVertex3f(axis_len, 0.0, 0.0)
+        
+        glColor3f(0.0, 1.0, 0.0)
+        glVertex3f(0.0, 0.0, 0.0)
+        glVertex3f(0.0, axis_len, 0.0)
+        
+        glColor3f(0.0, 0.0, 1.0)
+        glVertex3f(0.0, 0.0, 0.0)
+        glVertex3f(0.0, 0.0, axis_len)
+        
+        glEnd()
+
     def render(self):
         self.clear()
         
         glClear(GL_COLOR_BUFFER_BIT)
         glLoadIdentity()
-        gluLookAt(self.zoom_distance, 0, 0, 0, 0, 0, 0, 1, 0)
+        gluLookAt(self.zoom_distance, self.focal_point[1], self.focal_point[2],
+                  0.0, self.focal_point[1], self.focal_point[2],
+                  0, 1, 0)
+        
+        self._draw_axis()
         
         for section in self.sections:
             section.render()
