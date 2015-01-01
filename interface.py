@@ -349,7 +349,7 @@ class Window(pyglet.window.Window):
         
     def on_mouse_press(self, x, y, button, modifiers):
         if button == RIGHT_MOUSE_BUTTON_CODE:
-            location = self._mouse_to_work_plane(x, y)
+            location = self._mouse_to_2d_plane(x, y)
             self.sections.append(ShellSection(location, Point3D(0.0, 40.0, -20.0), self.num_rays, self.pupil_radius))
             
         elif button == LEFT_MOUSE_BUTTON_CODE:
@@ -366,17 +366,19 @@ class Window(pyglet.window.Window):
             self.middle_click = x,y
 
     def on_mouse_drag(self, x, y, dx, dy, buttons, modifiers):
-        start_plane_location = self._mouse_to_work_plane(x, y)
-        end_plane_location = self._mouse_to_work_plane(x+dx, y+dy)
-        delta = end_plane_location - start_plane_location
-        
         if self.left_click:
             for obj in self.selection:
+                start_plane_location = self._mouse_to_2d_plane(x, y)
+                end_plane_location = self._mouse_to_2d_plane(x+dx, y+dy)
+                delta = end_plane_location - start_plane_location
                 obj.pos += delta
         if self.middle_click:
             if modifiers & pyglet.window.key.MOD_SHIFT:
                 self._rotate(dx, dy)
             else:
+                start_plane_location = self._mouse_to_work_plane(x, y)
+                end_plane_location = self._mouse_to_work_plane(x+dx, y+dy)
+                delta = end_plane_location - start_plane_location
                 self.focal_point += -1.0 * delta
                 self.camera_point += -1.0 * delta
                 
@@ -399,6 +401,11 @@ class Window(pyglet.window.Window):
         self.up_vector = _normalize((matrix.dot(up_point) + self.focal_point) - self.camera_point)
         
     def _mouse_to_work_plane(self, x, y):
+        ray = self._click_to_ray(x, y)
+        point = Plane(self.focal_point, _normalize(self.camera_point - self.focal_point)).intersect_line(ray.start, ray.end)
+        return point
+    
+    def _mouse_to_2d_plane(self, x, y):
         ray = self._click_to_ray(x, y)
         point = Plane(Point3D(0.0, 0.0, 0.0), Point3D(1.0, 0.0, 0.0)).intersect_line(ray.start, ray.end)
         return point
