@@ -92,7 +92,7 @@ class Mesh(object):
             cell_array = self._mesh.GetPolys()
             polygons = cell_array.GetData()
             for i in xrange(0,  cell_array.GetNumberOfCells()):
-                triangle = [polygons.GetValue(j) for j in xrange(i*3+1, i*3+4)]
+                triangle = [polygons.GetValue(j) for j in xrange(i*4+1, i*4+4)]
                 a = points.GetTuple(triangle[0])
                 b = points.GetTuple(triangle[1])
                 c = points.GetTuple(triangle[2])
