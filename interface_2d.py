@@ -6,6 +6,13 @@ Installation instructions: sudo pip install pyglet
 This is a hacked together application to directly manipulate the surface in 2D.
 
 All assumptions and coordinates are the same as in main.py. It's simply 2D because we're viewing a 3D scene from (zoom, 0, 0) looking at (0, 0, 0)
+
+Usage instructions:
+
+left click and drag to move pixels or shell sections
+right click to make a new piece of shell (and paired pixel)
+middle mouse drag to pan
+middle mouse roll to zoom
 """
 
 import pyglet
