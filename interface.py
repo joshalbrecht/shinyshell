@@ -465,7 +465,7 @@ class Window(pyglet.window.Window):
         glViewport(0, 0, width, height)
         glMatrixMode(GL_PROJECTION)
         glLoadIdentity()
-        gluPerspective(65, width / float(height), 0.1, 1000)
+        gluPerspective(65, width / float(height), 0.01, 500)
         glMatrixMode(GL_MODELVIEW)
         return pyglet.event.EVENT_HANDLED
 
@@ -542,16 +542,6 @@ def make_scale(principal_ray, shell_point, screen_point, light_radius, angle_vec
     #trimmed_scale.export("temp.stl")
     return trimmed_scale
     
-#TODO: this might actually need to be part of make_scale, can't see a case where we would not want it
-#TODO: change phi and theta into an angle_vec. actually we dont even need them
-def trim_scale(scale, phi, theta, light_radius):
-    """
-    returns a new scale without a bunch of triangles
-    specifically trims all of the triangles that fall outside of the cylinder (n=angle_vec, p=0,0,0, r=light_radius)
-    """
-    #should be pretty easy--just get distance_sq to middle line. if greater than r^2, should be dropped
-    return scale
-    
 #NOTE: we're going to need to make a nice test setup to see if this works like I would expect
 def calculate_error(scale, reference_scale):
     """
@@ -595,9 +585,13 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, princip
     max_spacing = (float(total_vertical_resolution) / float(total_phi_steps)) * max_pixel_spot_size
     
     #create the first scale
-    scale = make_scale(principal_ray, initial_shell_point, initial_screen_point, parallel_light_cylinder_radius, AngleVector(0.0, 0.0))
-    center_scale = trim_scale(scale, 0, 0, parallel_light_cylinder_radius)
-    scales = [center_scale]
+    center_scale = make_scale(principal_ray, initial_shell_point, initial_screen_point, parallel_light_cylinder_radius, AngleVector(0.0, 0.0))
+    
+    #create another scale right above it for debugging the error function
+    shell_point = initial_shell_point + Point3D(0.0, 3.0, -1.0)
+    angle_vec = AngleVector(math.pi/2.0, _normalized_vector_angle(principal_ray, _normalize(shell_point)))
+    other_scale = make_scale(principal_ray, shell_point, initial_screen_point+Point3D(0.0, -min_pixel_spot_size, min_pixel_spot_size), parallel_light_cylinder_radius, angle_vec)
+    scales = [center_scale, other_scale]
     
     ##for now, we're just going to go up and down so we can visualize in 2D
     #prev_scale = center_scale
