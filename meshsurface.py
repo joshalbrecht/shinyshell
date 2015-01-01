@@ -8,93 +8,14 @@ from numpy import  array, asarray, arange, polyadd, polymul, polysub, polyval,\
 from pyoptools.raytrace.surface.surface import Surface
 from pyoptools.raytrace.ray.ray import Ray
 
+import mesh
+
 class MeshSurface(Surface):
 
     def __init__(self, arcs, *args, **kwargs):
         Surface.__init__(self, *args, **kwargs)
-        self.arcs = arcs
+        self._mesh = mesh.Mesh(mesh.mesh_from_arcs(arcs))
         self._inf_vector = numpy.array((inf,inf,inf))
-        self._build_mesh(arcs)
-
-    def _build_mesh(self, arcs):
-        # Define points, triangles and colors
-        points = vtk.vtkPoints()
-        triangles = vtk.vtkCellArray()
-        
-        # Build the meshgrid manually
-        count = 0
-        for i in range(1, len(arcs)):
-            parc = arcs[i-1]
-            arc = arcs[i]
-            
-            for j in range(0, len(arc)-1):
-
-                # Triangle 1
-                points.InsertNextPoint(arc[j][0], arc[j][1], arc[j][2])
-                points.InsertNextPoint(arc[j+1][0], arc[j+1][1], arc[j+1][2])
-                points.InsertNextPoint(parc[j+1][0], parc[j+1][1], parc[j+1][2])
-
-                triangle = vtk.vtkTriangle()
-                pointIds = triangle.GetPointIds()
-                pointIds.SetId(0, count)
-                pointIds.SetId(1, count + 1)
-                pointIds.SetId(2, count + 2)
-
-                count += 3
-
-                triangles.InsertNextCell(triangle)
-
-                # Triangle 2
-                points.InsertNextPoint(arc[j][0], arc[j][1], arc[j][2])
-                points.InsertNextPoint(parc[j+1][0], parc[j+1][1], parc[j+1][2])
-                points.InsertNextPoint(parc[j][0], parc[j][1], parc[j][2])
-
-                triangle = vtk.vtkTriangle()
-                pointIds = triangle.GetPointIds()
-                pointIds.SetId(0, count)
-                pointIds.SetId(1, count + 1)
-                pointIds.SetId(2, count + 2)
-
-                count += 3
-
-                triangles.InsertNextCell(triangle)
-
-        # Create a polydata object
-        trianglePolyData = vtk.vtkPolyData()
-
-        # Add the geometry and topology to the polydata
-        trianglePolyData.SetPoints(points)
-        trianglePolyData.SetPolys(triangles)
-
-        # Clean the polydata so that the edges are shared !
-        cleanPolyData = vtk.vtkCleanPolyData()
-        cleanPolyData.SetInput(trianglePolyData)
-        cleanPolyData.Update()
-        self.mesh = cleanPolyData.GetOutput()
-
-        #smooth_loop = vtk.vtkLoopSubdivisionFilter()
-        #smooth_loop.SetNumberOfSubdivisions(3)
-        #smooth_loop.SetInput(cleanPolyData.GetOutput())
-        #self.mesh = smooth_loop.GetOutput()
-
-        normals = vtk.vtkPolyDataNormals()
-        normals.SetInput(self.mesh)
-        normals.ComputeCellNormalsOn()
-        output = normals.GetOutput()
-        output.Update();
-        cellData = output.GetCellData();
-        self.normals = cellData.GetNormals();
-
-        stlWriter = vtk.vtkSTLWriter()
-        stlWriter.SetFileName("temp.stl")
-        stlWriter.SetInput(self.mesh)
-        stlWriter.Write()
-
-        self.caster = vtk.vtkOBBTree()
-        #set the 'mesh' as the caster's dataset
-        self.caster.SetDataSet(self.mesh)
-        #build a caster locator
-        self.caster.BuildLocator()
 
     def topo(self, xarray, yarray):
         """**Returns the Z value for a given X and Y**
@@ -114,24 +35,7 @@ class MeshSurface(Surface):
     def _get_point_and_normal(self, x, y):
         pointRaySource = (x, y, -1000000.0)
         pointRayTarget = (x, y, 1000000.0)
-
-        #create a 'vtkPoints' object to store the intersection points
-        pointsVTKintersection = vtk.vtkPoints()
-        #and a list for the cells
-        cellIds = vtk.vtkIdList()
-
-        #perform ray-casting (intersect a line with the mesh)
-        code = self.caster.IntersectWithLine(pointRaySource,
-                                             pointRayTarget,
-                                             pointsVTKintersection, cellIds)
-
-        # Interpret the 'code'. If "0" is returned then no intersections points
-        # were found so return an empty list
-        if code == 0:
-            return [None, None]
-        point = numpy.array(pointsVTKintersection.GetData().GetTuple3(0))
-        normal = numpy.array(self.normals.GetTuple(cellIds.GetId(0)))
-        return (point, normal)
+        return self._mesh.intersection_plus_normal(pointRaySource, pointRayTarget)
 
     def _intersection(self, A):
         '''**Point of intersection between a ray and the polynomical surface**
@@ -145,25 +49,13 @@ class MeshSurface(Surface):
         iray must be in the coordinate system of the surface
         '''
 
-        pointRaySource = A.pos
-        pointRayTarget = (1000000.0 * numpy.array(A.dir)) + numpy.array(A.pos)
-
-        #create a 'vtkPoints' object to store the intersection points
-        pointsVTKintersection = vtk.vtkPoints()
-        #perform ray-casting (intersect a line with the mesh)
-        code = self.caster.IntersectWithLine(pointRaySource,
-                                             pointRayTarget,
-                                             pointsVTKintersection, None)
-
-        # Interpret the 'code'. If "0" is returned then no intersections points
-        # were found so return an empty list
-        if code == 0:
-            return self._inf_vector
-        point = pointsVTKintersection.GetData().GetTuple3(0)
         #TODO: should be way smarter than this and use normals to sort things out (don't hit when coming from reverse side of surface)
         #basically the problem is that we're currently colliding right at the start of the ray
-        epsilon = 0.001
-        if numpy.linalg.norm(numpy.array(point) - A.pos) < epsilon:
+        pointRaySource = A.pos + A.dir * 0.001
+        pointRayTarget = (1000000.0 * numpy.array(A.dir)) + numpy.array(A.pos)
+        
+        point, normal = self._mesh.intersection_plus_normal(pointRaySource, pointRayTarget)
+        if point == None:
             return self._inf_vector
         return numpy.array(point)
 
@@ -187,7 +79,5 @@ class MeshSurface(Surface):
         '''
         Return an string with the representation of the mesh surface
         '''
-        return "MeshSurface(numPolys="+str(self.normals.GetNumberOfTuples())+")"
-
-
+        return "MeshSurface(mesh="+str(self._mesh)+")"
 

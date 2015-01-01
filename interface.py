@@ -471,10 +471,6 @@ class Window(pyglet.window.Window):
             event = self.dispatch_events()
             sleep(1.0/self.refreshrate)
             
-class Mesh(object):
-    def __init__(self):
-        pass
-    
 def create_arc(principal_ray, shell_point, screen_point, light_radius, angle_vec, is_horizontal=None):
     assert is_horizontal != None, "Must pass this parameter"
     
@@ -528,9 +524,9 @@ def make_scale(principal_ray, shell_point, screen_point, light_radius, angle_vec
         rib = create_arc(principal_ray, shell_point, screen_point, light_radius, angle_vec, is_horizontal=True)
         ribs.append(rib)
         
+    surface = MeshSurface(arcs, shape=shape, reflectivity=1.0)
     shell = create_shell(shell_distance, principal_eye_vector, shell_radius, ribs)
     
-
 #TODO: this might actually need to be part of make_scale, can't see a case where we would not want it
 #TODO: change phi and theta into an angle_vec. actually we dont even need them
 def trim_scale(scale, phi, theta, light_radius):
