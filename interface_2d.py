@@ -351,8 +351,9 @@ class Window(pyglet.window.Window):
         self.middle_click = None
         
         self.selection = []
+        self.zoom_multiplier = 1.2
         self.zoom_distance = 100.0
-        self.focal_point = Point3D(0,0,0)
+        self.focal_point = Point3D(0.0, 0.0, 0.0)
         
         self.num_rays = 3
         self.pupil_radius = 2.0
@@ -394,12 +395,13 @@ class Window(pyglet.window.Window):
         start_plane_location = self._mouse_to_work_plane(x, y)
         end_plane_location = self._mouse_to_work_plane(x+dx, y+dy)
         delta = end_plane_location - start_plane_location
+        print delta
         
         if self.left_click:
             for obj in self.selection:
                 obj.pos += delta
         if self.middle_click:
-            self.focal_point += delta
+            self.focal_point += -1.0 * delta
                 
     def _mouse_to_work_plane(self, x, y):
         ray = self._click_to_ray(x, y)
@@ -411,6 +413,13 @@ class Window(pyglet.window.Window):
             self.left_click = None
         elif button == MIDDLE_MOUSE_BUTTON_CODE:
             self.middle_click = None
+            
+    def on_mouse_scroll(self, x, y, scroll_x, scroll_y):
+        for i in range(0, abs(scroll_y)):
+            if scroll_y < 0:
+                self.zoom_distance *= self.zoom_multiplier
+            else:
+                self.zoom_distance *= 1.0 / self.zoom_multiplier
         
     def _click_to_ray(self, x, y):
         model = GL.glGetDoublev(GL.GL_MODELVIEW_MATRIX)
@@ -440,6 +449,7 @@ class Window(pyglet.window.Window):
         glEnd()
 
     def render(self):
+        
         self.clear()
         
         glClear(GL_COLOR_BUFFER_BIT)
