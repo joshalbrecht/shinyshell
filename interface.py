@@ -15,22 +15,22 @@ middle mouse drag to pan
 middle mouse roll to zoom
 """
 
-import pyglet
+import math
+import sys
 from time import time, sleep
 
-from optics import Point3D, _normalize, _normalized_vector_angle, _get_arc_plane_normal, angle_vector_to_vector, AngleVector
-
 from OpenGL import GL, GLU
+import pyglet
 from pyglet.gl import *
-
 import pyglet.window.key
-
 import numpy
 import scipy.integrate
 
-import math
-import sys
+import rotation_matrix
+from optics import Point3D, _normalize, _normalized_vector_angle, _get_arc_plane_normal, angle_vector_to_vector, AngleVector
+import mesh
 
+#TODO: use the pyglet codes here instead
 LEFT_MOUSE_BUTTON_CODE = 1L
 MIDDLE_MOUSE_BUTTON_CODE = 2L
 RIGHT_MOUSE_BUTTON_CODE = 4L
@@ -322,8 +322,9 @@ class Window(pyglet.window.Window):
         
         self.selection = []
         self.zoom_multiplier = 1.2
-        self.zoom_distance = 100.0
-        self.focal_point = Point3D(0.0, 0.0, 0.0)
+        self.focal_point = Point3D(0.0, 20.0, 30.0)
+        self.camera_point = Point3D(100.0, self.focal_point[1], self.focal_point[2])
+        self.up_vector = Point3D(0.0, 1.0, 0.0)
         
         self.num_rays = 3
         self.pupil_radius = 2.0
@@ -333,8 +334,7 @@ class Window(pyglet.window.Window):
         initial_shell_point = Point3D(0.0, 0.0, -60.0)
         initial_screen_point = Point3D(0.0, 40.0, -20.0)
         principal_ray = Point3D(0.0, 0.0, -1.0)
-        self.scales = []
-        #self.scales = create_surface_via_scales(initial_shell_point, initial_screen_point, principal_ray)
+        self.scales = create_surface_via_scales(initial_shell_point, initial_screen_point, principal_ray)
         
     #TODO: someday can save and load sections as well perhaps, so we can resume after shutting down
     def create_initial_sections(self):
@@ -355,7 +355,6 @@ class Window(pyglet.window.Window):
         elif button == LEFT_MOUSE_BUTTON_CODE:
             self.left_click = x,y
         
-            #pyglet.window.key.MOD_SHIFT
             ray = self._click_to_ray(x, y)
             obj = SceneObject.pick_object(ray)
             if obj:
@@ -375,8 +374,30 @@ class Window(pyglet.window.Window):
             for obj in self.selection:
                 obj.pos += delta
         if self.middle_click:
-            self.focal_point += -1.0 * delta
+            if modifiers & pyglet.window.key.MOD_SHIFT:
+                self._rotate(dx, dy)
+            else:
+                self.focal_point += -1.0 * delta
+                self.camera_point += -1.0 * delta
                 
+    def _rotate(self, dx, dy):
+        angle_step = 0.01
+        view_normal = _normalize(self.focal_point - self.camera_point)
+        side_normal = numpy.cross(view_normal, self.up_vector)
+        y_matrix = numpy.zeros((3,3))
+        y_angle = dy * angle_step
+        rotation_matrix.R_axis_angle(y_matrix, side_normal, y_angle)
+        x_matrix = numpy.zeros((3,3))
+        x_angle = -dx * angle_step
+        rotation_matrix.R_axis_angle(x_matrix, self.up_vector, x_angle)
+        matrix = x_matrix.dot(y_matrix)
+        
+        #translate up point and camera point to remove the focal_point offset, rotate them, then translate back
+        camera_point = self.camera_point - self.focal_point
+        up_point = camera_point + self.up_vector
+        self.camera_point = matrix.dot(camera_point) + self.focal_point
+        self.up_vector = _normalize((matrix.dot(up_point) + self.focal_point) - self.camera_point)
+        
     def _mouse_to_work_plane(self, x, y):
         ray = self._click_to_ray(x, y)
         point = Plane(Point3D(0.0, 0.0, 0.0), Point3D(1.0, 0.0, 0.0)).intersect_line(ray.start, ray.end)
@@ -389,11 +410,13 @@ class Window(pyglet.window.Window):
             self.middle_click = None
             
     def on_mouse_scroll(self, x, y, scroll_x, scroll_y):
+        distance = numpy.linalg.norm(self.camera_point - self.focal_point)
         for i in range(0, abs(scroll_y)):
             if scroll_y < 0:
-                self.zoom_distance *= self.zoom_multiplier
+                distance *= self.zoom_multiplier
             else:
-                self.zoom_distance *= 1.0 / self.zoom_multiplier
+                distance *= 1.0 / self.zoom_multiplier
+        self.camera_point = self.focal_point + distance * _normalize(self.camera_point - self.focal_point)
         
     def _click_to_ray(self, x, y):
         model = GL.glGetDoublev(GL.GL_MODELVIEW_MATRIX)
@@ -428,9 +451,9 @@ class Window(pyglet.window.Window):
         
         glClear(GL_COLOR_BUFFER_BIT)
         glLoadIdentity()
-        gluLookAt(self.zoom_distance, self.focal_point[1], self.focal_point[2],
-                  0.0, self.focal_point[1], self.focal_point[2],
-                  0, 1, 0)
+        gluLookAt(self.camera_point[0], self.camera_point[1], self.camera_point[2],
+                  self.focal_point[0], self.focal_point[1], self.focal_point[2],
+                  self.up_vector[0], self.up_vector[1], self.up_vector[2])
         
         self._draw_axis()
         
@@ -521,11 +544,12 @@ def make_scale(principal_ray, shell_point, screen_point, light_radius, angle_vec
     spine = create_arc(principal_ray, shell_point, screen_point, light_radius, angle_vec, is_horizontal=False)
     ribs = []
     for point in spine:
-        rib = create_arc(principal_ray, shell_point, screen_point, light_radius, angle_vec, is_horizontal=True)
+        rib = create_arc(principal_ray, point, screen_point, light_radius, angle_vec, is_horizontal=True)
         ribs.append(rib)
         
-    surface = MeshSurface(arcs, shape=shape, reflectivity=1.0)
-    shell = create_shell(shell_distance, principal_eye_vector, shell_radius, ribs)
+    scale = mesh.Mesh(mesh.mesh_from_arcs(ribs))
+    scale.export("temp.stl")
+    return scale
     
 #TODO: this might actually need to be part of make_scale, can't see a case where we would not want it
 #TODO: change phi and theta into an angle_vec. actually we dont even need them
@@ -580,7 +604,7 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, princip
     max_spacing = (float(total_vertical_resolution) / float(total_phi_steps)) * max_pixel_spot_size
     
     #create the first scale
-    scale = make_scale(principal_ray, initial_shell_point, initial_screen_point, AngleVector(0.0, 0.0))
+    scale = make_scale(principal_ray, initial_shell_point, initial_screen_point, parallel_light_cylinder_radius, AngleVector(0.0, 0.0))
     center_scale = trim_scale(scale, 0, 0, parallel_light_cylinder_radius)
     scales = [center_scale]
     
