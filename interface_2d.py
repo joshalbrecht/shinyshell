@@ -185,18 +185,21 @@ class ShellSection(object):
     """
     
     def __init__(self, shell_pos, pixel_pos, num_rays, pupil_radius):
-        self._shell = ReflectiveSurface(pos=shell_pos, color=(1.0, 1.0, 1.0), change_handler=self._recalculate)
-        self._pixel = ScreenPixel(pos=pixel_pos, color=(1.0, 1.0, 1.0), change_handler=self._recalculate)
+        self._shell = ReflectiveSurface(pos=shell_pos, color=(1.0, 1.0, 1.0), change_handler=self._on_change)
+        self._pixel = ScreenPixel(pos=pixel_pos, color=(1.0, 1.0, 1.0), change_handler=self._on_change)
         self._num_rays = num_rays
         self._pupil_radius = pupil_radius
         
         #calculated attributes
         self._rays = []
         
+        self._dirty = True
         self._recalculate()
         
     def render(self):
         """Draw the shell section, pixel, and rays"""
+        self._recalculate()
+        
         self._shell.render()
         self._pixel.render()
         for ray in self._rays:
@@ -215,6 +218,10 @@ class ShellSection(object):
         #segment = VisibleLineSegment(start, end)
         #self._shell.segments = [segment]
         #self._rays = [LightRay(Point3D(0,0,0), self._shell.pos), LightRay(self._shell.pos, self._pixel.pos)]
+        
+        if not self._dirty:
+            return
+        self._dirty = False
         
         principal_ray = Point3D(0.0, 0.0, -1.0)
         
@@ -247,7 +254,7 @@ class ShellSection(object):
                 #intersect that with the max and min rays from the eye
                 #check the distance between those intersections and double it or something
             t_step = 0.2
-            max_t = 3.0
+            max_t = 5.0
             return numpy.arange(0.0, max_t, t_step)
         t_values = estimate_t_values()
     
@@ -317,7 +324,7 @@ class ShellSection(object):
     @num_rays.setter
     def num_rays(self, value): 
         self._num_rays = value
-        self._recalculate()
+        self._on_change()
         
     @property
     def pupil_radius(self): 
@@ -326,7 +333,11 @@ class ShellSection(object):
     @pupil_radius.setter
     def pupil_radius(self, value): 
         self._pupil_radius = value
-        self._recalculate()
+        self._on_change()
+        
+    def _on_change(self):
+        self._dirty = True
+    
 
 class Window(pyglet.window.Window):
     def __init__(self, refreshrate):
@@ -372,6 +383,8 @@ class Window(pyglet.window.Window):
         obj = SceneObject.pick_object(ray)
         if obj:
             self.selection = [obj]
+        else:
+            self.selection = []
 
     def on_mouse_drag(self, x, y, dx, dy, buttons, modifiers):
         if self.click:
