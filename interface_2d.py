@@ -11,12 +11,22 @@ All assumptions and coordinates are the same as in main.py. It's simply 2D becau
 import pyglet
 from time import time, sleep
 
-from main import Point3D, _normalize
+from main import Point3D, _normalize, _normalized_vector_angle, _get_arc_plane_normal, angle_vector_to_vector, AngleVector
 
 from OpenGL import GL, GLU
 from pyglet.gl import *
 
+import pyglet.window.key
+
+import numpy
+import scipy.integrate
+
 import math
+import sys
+
+LEFT_MOUSE_BUTTON_CODE = 1L
+MIDDLE_MOUSE_BUTTON_CODE = 2L
+RIGHT_MOUSE_BUTTON_CODE = 4L
 
 def dist2(v, w):
     return sum(((math.pow(v[i] - w[i], 2) for i in range(0, len(v)))))
@@ -195,22 +205,110 @@ class ShellSection(object):
     def _recalculate(self):
         """Update internal state when any of the interesting variables have changed"""
         
-        #note: this is just a hacky implementation right now to see if things are generally working
-        point_to_eye = _normalize(Point3D(0,0,0) - self._shell.pos)
-        point_to_pixel = _normalize(self._pixel.pos - self._shell.pos)
-        surface_normal = _normalize((point_to_eye + point_to_pixel) / 2.0)
-        tangent = Point3D(0.0, -1.0 * surface_normal[2], surface_normal[1])
-        start = self._shell.pos + tangent
-        end = self._shell.pos - tangent
-        segment = VisibleLineSegment(start, end)
-        self._shell.segments = [segment]
-        self._rays = [LightRay(Point3D(0,0,0), self._shell.pos), LightRay(self._shell.pos, self._pixel.pos)]
+        ##note: this is just a hacky implementation right now to see if things are generally working
+        #point_to_eye = _normalize(Point3D(0,0,0) - self._shell.pos)
+        #point_to_pixel = _normalize(self._pixel.pos - self._shell.pos)
+        #surface_normal = _normalize((point_to_eye + point_to_pixel) / 2.0)
+        #tangent = Point3D(0.0, -1.0 * surface_normal[2], surface_normal[1])
+        #start = self._shell.pos + tangent
+        #end = self._shell.pos - tangent
+        #segment = VisibleLineSegment(start, end)
+        #self._shell.segments = [segment]
+        #self._rays = [LightRay(Point3D(0,0,0), self._shell.pos), LightRay(self._shell.pos, self._pixel.pos)]
         
-        #TODO: do the right thing
+        principal_ray = Point3D(0.0, 0.0, -1.0)
+        
         #figure out the angle of the primary ray
-        #define a vector field for the surface normals of the shell. They are completely constrained given the location of the pixel and the fact that the reflecting ray must be at a particular angle
-        #use that vector field to define the exact shape of the surface
-        #simply pre-create a list of rays and line segments for the shell (all to be rendered later)
+        fixed_phi = _normalized_vector_angle(principal_ray, _normalize(self._shell.pos))
+        
+        #define a vector field for the surface normals of the shell.
+        #They are completely constrained given the location of the pixel and the fact
+        #that the reflecting ray must be at a particular angle        
+        arc_plane_normal = _get_arc_plane_normal(principal_ray, False)
+        def f(point, t):
+            if point[1] > 0.0:
+                theta = 3.0 * math.pi / 2.0
+            else:
+                theta = math.pi / 2.0
+            eye_to_point_vec = angle_vector_to_vector(AngleVector(theta, fixed_phi), principal_ray)
+            
+            point_to_eye_vec = eye_to_point_vec * -1
+            point_to_screen_vec = _normalize(self._pixel.pos - point)
+            surface_normal = _normalize((point_to_screen_vec + point_to_eye_vec) / 2.0)
+            derivative = _normalize(numpy.cross(surface_normal, arc_plane_normal))
+            return derivative
+        
+        #estimate how long the piece of the shell will be (the one that is large enough to reflect all rays)
+        #overestimates will waste time, underestimates cause it to crash :-P
+        #note that we're doing this one half at a time
+        def estimate_t_values():
+            #TODO: make this faster if necessary by doing the following:
+                #define the simple line that reflects the primary ray
+                #intersect that with the max and min rays from the eye
+                #check the distance between those intersections and double it or something
+            t_step = 0.2
+            max_t = 3.0
+            return numpy.arange(0.0, max_t, t_step)
+        t_values = estimate_t_values()
+    
+        #use the vector field to define the exact shape of the surface (first half)
+        half_arc = scipy.integrate.odeint(f, self._shell.pos, t_values)
+        
+        #do the other half as well
+        def g(point, t):
+            return -1.0 * f(point, t)
+        
+        #combine them
+        other_half_arc = list(scipy.integrate.odeint(g, self._shell.pos, t_values))
+        other_half_arc.pop(0)
+        other_half_arc.reverse()
+        shell_points = other_half_arc + list(half_arc)
+        
+        #create all of the segments
+        segments = [VisibleLineSegment(shell_points[i-1], shell_points[i]) for i in range(1, len(shell_points))]
+        
+        #create all of the inifinite rays (those going from the eye to someplace really far away, in the correct direction)
+        infinite_rays = []
+        base_eye_ray = Ray(Point3D(0,0,0), 100.0 * self._shell.pos)
+        if self._num_rays == 1:
+            infinite_rays.append(base_eye_ray)
+        else:
+            for y in numpy.linspace(-self._pupil_radius, self.pupil_radius, num=self._num_rays):
+                delta = Point3D(0, y, 0)
+                infinite_rays.append(Ray(base_eye_ray.start + delta, base_eye_ray.end+delta))
+        
+        #NOTE: we are NOT actually reflecting these rays off of the surface right now.
+        #'bounce' each ray off of the surface (eg, find the segment that it is closest to and use that as the termination)
+        #this is used to create the rays that we will draw later
+        #also remembers the earliest and latest segment index, so that we can drop everything not required for the surface
+        earliest_segment_index = sys.maxint
+        latest_segment_index = -1
+        self._rays = []
+        for ray in infinite_rays:
+            best_index = -1
+            best_sq_dist = float("inf")
+            best_loc = None
+            for i in range(0, len(segments)):
+                seg = segments[i]
+                tangent = _normalize(seg.end - seg.start)
+                #janky rotation
+                normal = Point3D(0, tangent[2], -tangent[1])
+                plane = Plane(seg.start, normal)
+                loc = plane.intersect_line(ray.start, ray.end)
+                midpoint = (seg.start + seg.end) /2.0
+                delta = midpoint - loc
+                sq_dist = delta.dot(delta)
+                if sq_dist < best_sq_dist:
+                    best_index = i
+                    best_loc = loc
+                    best_sq_dist = sq_dist
+            self._rays.append(LightRay(ray.start, best_loc))
+            self._rays.append(LightRay(best_loc, self._pixel.pos))
+            if best_index > latest_segment_index:
+                latest_segment_index = best_index
+            if best_index < earliest_segment_index:
+                earliest_segment_index = best_index
+        self._shell.segments = segments[earliest_segment_index:latest_segment_index]
 
     @property
     def num_rays(self): 
@@ -260,11 +358,20 @@ class Window(pyglet.window.Window):
 
     def on_draw(self):
         self.render()
-
+        
     def on_mouse_press(self, x, y, button, modifiers):
+        if button == RIGHT_MOUSE_BUTTON_CODE:
+            location = self._mouse_to_work_plane(x, y)
+            self.sections.append(ShellSection(location, Point3D(0.0, 40.0, -20.0), self.num_rays, self.pupil_radius))
+            return
+        
         self.click = x,y
+        
+        #pyglet.window.key.MOD_SHIFT
         ray = self._click_to_ray(x, y)
-        self.selection = [SceneObject.pick_object(ray)]
+        obj = SceneObject.pick_object(ray)
+        if obj:
+            self.selection = [obj]
 
     def on_mouse_drag(self, x, y, dx, dy, buttons, modifiers):
         if self.click:
