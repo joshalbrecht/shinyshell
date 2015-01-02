@@ -25,6 +25,7 @@ from pyglet.gl import *
 import pyglet.window.key
 import numpy
 import scipy.integrate
+import scipy.optimize
 
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import axes3d, Axes3D #<-- Note the capitalization! 
@@ -615,28 +616,37 @@ def find_scale_and_error_at_best_distance(reference_scales, principal_ray, scree
     num_iterations = 14
     angle_normal = angle_vector_to_vector(angle_vec, principal_ray)
     reference_distance = numpy.linalg.norm(reference_scales[0].shell_point)
-
-    lower_bound_dist = reference_distance - light_radius
-    lower_bound_scale, lower_bound_error = _get_scale_and_error_at_distance(lower_bound_dist, angle_normal, reference_scales, principal_ray, screen_point, light_radius, angle_vec)
-    upper_bound_dist = reference_distance + light_radius
-    upper_bound_scale, upper_bound_error = _get_scale_and_error_at_distance(upper_bound_dist, angle_normal, reference_scales, principal_ray, screen_point, light_radius, angle_vec)
     
-    for i in range(0, num_iterations):
-        current_distance = (lower_bound_dist + upper_bound_dist) / 2.0
-        scale, error = _get_scale_and_error_at_distance(current_distance, angle_normal, reference_scales, principal_ray, screen_point, light_radius, angle_vec)
-        print error
-        if lower_bound_error < upper_bound_error:
-            upper_bound_error = error
-            upper_bound_dist = current_distance
-            upper_bound_scale = scale
-        else:
-            lower_bound_error = error
-            lower_bound_dist = current_distance
-            lower_bound_scale = scale
-            
-    if lower_bound_error < upper_bound_error:
-        return lower_bound_scale, lower_bound_error
-    return upper_bound_scale, upper_bound_error
+    lower_bound_dist = reference_distance - light_radius
+    #lower_bound_scale, lower_bound_error = _get_scale_and_error_at_distance(lower_bound_dist, angle_normal, reference_scales, principal_ray, screen_point, light_radius, angle_vec)
+    upper_bound_dist = reference_distance + light_radius
+    #upper_bound_scale, upper_bound_error = _get_scale_and_error_at_distance(upper_bound_dist, angle_normal, reference_scales, principal_ray, screen_point, light_radius, angle_vec)
+    
+    #for i in range(0, num_iterations):
+    #    current_distance = (lower_bound_dist + upper_bound_dist) / 2.0
+    #    scale, error = _get_scale_and_error_at_distance(current_distance, angle_normal, reference_scales, principal_ray, screen_point, light_radius, angle_vec)
+    #    print error
+    #    if lower_bound_error < upper_bound_error:
+    #        upper_bound_error = error
+    #        upper_bound_dist = current_distance
+    #        upper_bound_scale = scale
+    #    else:
+    #        lower_bound_error = error
+    #        lower_bound_dist = current_distance
+    #        lower_bound_scale = scale
+    #        
+    #if lower_bound_error < upper_bound_error:
+    #    return lower_bound_scale, lower_bound_error
+    #return upper_bound_scale, upper_bound_error
+    
+    scales = {}
+    def f(x):
+        scale, error = _get_scale_and_error_at_distance(x, angle_normal, reference_scales, principal_ray, screen_point, light_radius, angle_vec)
+        scales[x] = (scale, error)
+        return error
+    #best_value, best_error, err, num_calls = scipy.optimize.fminbound(f, lower_bound_dist, upper_bound_dist, maxfun=num_iterations, xtol=0.001, full_output=True, disp=0)
+    best_value = scipy.optimize.fminbound(f, lower_bound_dist, upper_bound_dist, maxfun=num_iterations, xtol=0.001, full_output=False, disp=0)
+    return scales[best_value]
     
 def create_scale(phi, theta, prev_scale, principal_ray, dist_range, spacing_range):
     """
@@ -692,23 +702,45 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, princip
     #scales = [center_scale, other_scale]
     scales = [center_scale]
     
-    #make a 5x5 grid, centered on the previous screen location, and with +/- reasonable spacing * 2 in either direction
-    spacing = (max_spacing + min_spacing) / 2.0
-    grid_size = 9
-    plot_x, plot_y = numpy.meshgrid(
-        numpy.linspace(initial_screen_point[2] - 5.0, initial_screen_point[2], grid_size),
-        numpy.linspace(initial_screen_point[1], initial_screen_point[1] + 5.0, grid_size))
-    error_values = numpy.zeros((grid_size,grid_size))
-    for i in range(0, grid_size):
-        for j in range(0, grid_size):
-            z = plot_x[i][j]
-            y = plot_y[i][j]
-            other_scale, error = find_scale_and_error_at_best_distance([center_scale], principal_ray,
-                #TODO: has a 0 in there, which will not generalize
-                Point3D(0.0, y, z), light_radius, angle_vec)
-            print error
-            error_values[i][j] = error
-    plot_error(plot_x, plot_y, error_values)
+    ##make a 5x5 grid, centered on the previous screen location, and with +/- reasonable spacing * 2 in either direction
+    #spacing = (max_spacing + min_spacing) / 2.0
+    #grid_size = 9
+    #plot_x, plot_y = numpy.meshgrid(
+    #    numpy.linspace(initial_screen_point[2] - 5.0, initial_screen_point[2], grid_size),
+    #    numpy.linspace(initial_screen_point[1], initial_screen_point[1] + 5.0, grid_size))
+    #error_values = numpy.zeros((grid_size,grid_size))
+    #for i in range(0, grid_size):
+    #    for j in range(0, grid_size):
+    #        z = plot_x[i][j]
+    #        y = plot_y[i][j]
+    #        other_scale, error = find_scale_and_error_at_best_distance([center_scale], principal_ray,
+    #            #TODO: has a 0 in there, which will not generalize
+    #            Point3D(0.0, y, z), light_radius, angle_vec)
+    #        print error
+    #        error_values[i][j] = error
+    #plot_error(plot_x, plot_y, error_values)
+    
+    #ok, new approach to actually optimizing the next shell:
+    #simply walk along the direction orthogonal to the last pixel -> shell vector in the current plane
+    #and find the location with the minimal error
+    prev_scale = center_scale
+    #TODO: obviously this has to change in the general case
+    optimization_normal = numpy.cross(Point3D(1.0, 0.0, 0.0), _normalize(prev_scale.shell_point - prev_scale.pixel_point))
+    results = {}
+    def f(x):
+        pixel_point = prev_scale.pixel_point + x * optimization_normal
+        other_scale, error = find_scale_and_error_at_best_distance([center_scale], principal_ray, pixel_point, light_radius, angle_vec)
+        results[x] = (other_scale, error)
+        return error
+    lower_bound = 0.0
+    #NOTE: is a hack / guestimate
+    upper_bound = 2.0 * light_radius
+    num_iterations = 5
+    best_value, best_error, err, num_calls = scipy.optimize.fminbound(f, lower_bound, upper_bound, maxfun=num_iterations, xtol=0.0001, full_output=True, disp=3)
+    scales.append(results[best_value][0])
+    
+    #after that, simply find the point along that line (from the shell to that pixel) that is closest to the previous pixel
+    #(since we don't want the screen to get any bigger than it has to)
     
     ##for now, we're just going to go up and down so we can visualize in 2D
     #prev_scale = center_scale
