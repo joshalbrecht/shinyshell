@@ -592,8 +592,12 @@ def calculate_error(scale, reference_scale):
         intersection_point, intersection_normal = scale.intersection_plus_normal(start, end)
         if intersection_point != None:
             num_hits += 1
+            #print numpy.linalg.norm(intersection_point - point)
             dist += numpy.linalg.norm(intersection_point - point)
+            #delta = intersection_point - point
+            #dist += delta.dot(delta)
     average_error = dist / num_hits
+    #print num_hits
     return average_error
 
 def _get_scale_and_error_at_distance(distance, angle_normal, reference_scales, principal_ray, screen_point, light_radius, angle_vec):
@@ -620,7 +624,7 @@ def find_scale_and_error_at_best_distance(reference_scales, principal_ray, scree
     for i in range(0, num_iterations):
         current_distance = (lower_bound_dist + upper_bound_dist) / 2.0
         scale, error = _get_scale_and_error_at_distance(current_distance, angle_normal, reference_scales, principal_ray, screen_point, light_radius, angle_vec)
-        #print error
+        print error
         if lower_bound_error < upper_bound_error:
             upper_bound_error = error
             upper_bound_dist = current_distance
@@ -678,25 +682,33 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, princip
     
     #calculate_error(other_scale, center_scale)
     
-    other_scale, error = find_scale_and_error_at_best_distance([center_scale], principal_ray, initial_screen_point+Point3D(0.0, -min_pixel_spot_size, min_pixel_spot_size), light_radius, angle_vec)
-    print error
+    #other_scale, error = find_scale_and_error_at_best_distance([center_scale], principal_ray,
+    #    #initial_screen_point+Point3D(0.0, -10.0, 10.0), light_radius, angle_vec)
+    #    initial_screen_point+Point3D(0.0, 0.0, 0.0), light_radius, angle_vec)
+    #print error
     
     #wheeee
     #now let's make a grid of different pixel locations, and how those impact the final error
+    #scales = [center_scale, other_scale]
+    scales = [center_scale]
     
-    scales = [center_scale, other_scale]
-    
-    #sys.exit()
-    
-    alpha = 0.7
-    phi_ext = 2 * math.pi * 0.5
-    def flux_qubit_potential(phi_m, phi_p):
-        return 2 + alpha - 2 * numpy.cos(phi_p)*numpy.cos(phi_m) - alpha * numpy.cos(phi_ext - 2*phi_p)
-    phi_m = numpy.linspace(0, 2*math.pi, 100)
-    phi_p = numpy.linspace(0, 2*math.pi, 100)
-    x,y = numpy.meshgrid(phi_p, phi_m)
-    z = flux_qubit_potential(x, y).T
-    plot_error(x, y, z)
+    #make a 5x5 grid, centered on the previous screen location, and with +/- reasonable spacing * 2 in either direction
+    spacing = (max_spacing + min_spacing) / 2.0
+    grid_size = 9
+    plot_x, plot_y = numpy.meshgrid(
+        numpy.linspace(initial_screen_point[2] - 5.0, initial_screen_point[2], grid_size),
+        numpy.linspace(initial_screen_point[1], initial_screen_point[1] + 5.0, grid_size))
+    error_values = numpy.zeros((grid_size,grid_size))
+    for i in range(0, grid_size):
+        for j in range(0, grid_size):
+            z = plot_x[i][j]
+            y = plot_y[i][j]
+            other_scale, error = find_scale_and_error_at_best_distance([center_scale], principal_ray,
+                #TODO: has a 0 in there, which will not generalize
+                Point3D(0.0, y, z), light_radius, angle_vec)
+            print error
+            error_values[i][j] = error
+    plot_error(plot_x, plot_y, error_values)
     
     ##for now, we're just going to go up and down so we can visualize in 2D
     #prev_scale = center_scale
@@ -723,7 +735,7 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, princip
 def plot_error(x, y, z):
     fig = plt.figure()
     ax = Axes3D(fig)
-    p = ax.plot_wireframe(x, y, z, rstride=4, cstride=4)
+    p = ax.plot_wireframe(x, y, z)
     plt.show()
 
 def main():
