@@ -771,7 +771,7 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, princip
         num_iterations = 8
         
     phi_step = 0.05
-    final_phi = 0.14#fov/2.0
+    final_phi = fov/2.0
     
     for direction in (1.0, -1.0):
         phi = 0.0
