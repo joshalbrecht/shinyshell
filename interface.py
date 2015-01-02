@@ -40,7 +40,7 @@ MIDDLE_MOUSE_BUTTON_CODE = 2L
 RIGHT_MOUSE_BUTTON_CODE = 4L
 
 #enable this to speed up development. Just cuts back on a lot of precision
-LOW_QUALITY_MODE = True
+LOW_QUALITY_MODE = False
 
 class Plane(object):
     def __init__(self, point, normal):
@@ -330,7 +330,7 @@ class Window(pyglet.window.Window):
         """Initialize some semi-sensible sections"""
         self.sections = []
         self.sections.append(ShellSection(Point3D(0.0, 10.0, -70.0), Point3D(0.0, 40.0, -20.0), self.num_rays, self.pupil_radius))
-        self.sections.append(ShellSection(Point3D(0.0, 0.0, -60.0), Point3D(0.0, 40.0, -20.0), self.num_rays, self.pupil_radius))
+        #self.sections.append(ShellSection(Point3D(0.0, 0.0, -60.0), Point3D(0.0, 40.0, -20.0), self.num_rays, self.pupil_radius))
         self.sections.append(ShellSection(Point3D(0.0, -5.0, -50.0), Point3D(0.0, 40.0, -20.0), self.num_rays, self.pupil_radius))
 
     def on_draw(self):
@@ -500,6 +500,10 @@ class Scale(mesh.Mesh):
         self._pixel_point = pixel_point
         self._angle_vec = angle_vec
         self.shell_distance_error = None
+        self._num_rays = 11
+        self._pupil_radius = 3.0
+        
+        self._rays = None
         
     @property
     def shell_point(self):
@@ -516,9 +520,43 @@ class Scale(mesh.Mesh):
     def points(self):
         point_data = self._mesh.GetPoints().GetData()
         return [numpy.array(point_data.GetTuple(i)) for i in range(0, point_data.GetSize())]
+    
+    def render(self):
+        mesh.Mesh.render(self)
+        
+        if self._rays == None:
+            self._calculate_rays()
+        
+        for ray in self._rays:
+            ray.render()
+            
+    def _calculate_rays(self):
+        infinite_rays = []
+        base_eye_ray = Ray(Point3D(0,0,0), 100.0 * self._shell_point)
+        if self._num_rays == 1:
+            infinite_rays.append(base_eye_ray)
+        else:
+            for y in numpy.linspace(-self._pupil_radius, self._pupil_radius, num=self._num_rays):
+                delta = Point3D(0, y, 0)
+                infinite_rays.append(Ray(base_eye_ray.start + delta, base_eye_ray.end+delta))
+        
+        reflection_length = 1.1 * numpy.linalg.norm(self.shell_point - self.pixel_point)
+        self._rays = []
+        for ray in infinite_rays:
+            intersection, normal = self.intersection_plus_normal(ray.start, ray.end)
+            if intersection != None:
+                self._rays.append(LightRay(ray.start, intersection))
+                reverse_ray_direction = _normalize(ray.start - ray.end)
+                midpoint = closestPointOnLine(reverse_ray_direction, Point3D(0.0, 0.0, 0.0), normal)
+                reflection_direction = (2.0 * (midpoint - reverse_ray_direction))
+                self._rays.append(LightRay(intersection, reflection_length * reflection_direction))
 
 def create_arc(principal_ray, shell_point, screen_point, light_radius, angle_vec, is_horizontal=None):
     assert is_horizontal != None, "Must pass this parameter"
+    
+    ##HACK: just seeing what happens if I do this:
+    #shell_to_screen_vec = screen_point - shell_point
+    #screen_point = 20.0 * shell_to_screen_vec + shell_point
     
     #define a vector field for the surface normals of the shell.
     #They are completely constrained given the location of the pixel and the fact
@@ -527,7 +565,7 @@ def create_arc(principal_ray, shell_point, screen_point, light_radius, angle_vec
     desired_light_direction_off_screen_towards_eye = -1.0 * angle_vector_to_vector(angle_vec, principal_ray)
     def f(point, t):
         point_to_screen_vec = _normalize(screen_point - point)
-        surface_normal = _normalize((point_to_screen_vec + desired_light_direction_off_screen_towards_eye) / 2.0)
+        surface_normal = _normalize(point_to_screen_vec + desired_light_direction_off_screen_towards_eye)
         derivative = _normalize(numpy.cross(surface_normal, arc_plane_normal))
         return derivative
     
@@ -541,7 +579,7 @@ def create_arc(principal_ray, shell_point, screen_point, light_radius, angle_vec
             #define the simple line that reflects the primary ray
             #intersect that with the max and min rays from the eye
             #check the distance between those intersections and double it or something
-        t_step = 0.2
+        t_step = 0.1
         if LOW_QUALITY_MODE:
             t_step = 0.5
         max_t = 5.0
@@ -572,16 +610,27 @@ def make_scale(principal_ray, shell_point, screen_point, light_radius, angle_vec
         rib = create_arc(principal_ray, point, screen_point, light_radius, angle_vec, is_horizontal=True)
         ribs.append(rib)
         
-    scale = mesh.Mesh(mesh.mesh_from_arcs(ribs))
-    #scale.export("temp.stl")
-    trimmed_scale = Scale(
+    
+    
+    #TODO: replace this with original:
+    return Scale(
         shell_point=shell_point,
         pixel_point=screen_point,
         angle_vec=angle_vec,
-        mesh=mesh.trim_mesh_with_cone(scale._mesh, Point3D(0.0, 0.0, 0.0), _normalize(shell_point), light_radius)
+        mesh=mesh.mesh_from_arcs(ribs)
     )
-    #trimmed_scale.export("temp.stl")
-    return trimmed_scale
+
+
+    #scale = mesh.Mesh(mesh.mesh_from_arcs(ribs))
+    ##scale.export("temp.stl")
+    #trimmed_scale = Scale(
+    #    shell_point=shell_point,
+    #    pixel_point=screen_point,
+    #    angle_vec=angle_vec,
+    #    mesh=mesh.trim_mesh_with_cone(scale._mesh, Point3D(0.0, 0.0, 0.0), _normalize(shell_point), light_radius)
+    #)
+    ##trimmed_scale.export("temp.stl")
+    #return trimmed_scale
     
 def calculate_error(scale, reference_scale):
     """
@@ -627,26 +676,7 @@ def find_scale_and_error_at_best_distance(reference_scales, principal_ray, scree
     reference_distance = numpy.linalg.norm(reference_scales[0].shell_point)
     
     lower_bound_dist = reference_distance - light_radius
-    #lower_bound_scale, lower_bound_error = _get_scale_and_error_at_distance(lower_bound_dist, angle_normal, reference_scales, principal_ray, screen_point, light_radius, angle_vec)
     upper_bound_dist = reference_distance + light_radius
-    #upper_bound_scale, upper_bound_error = _get_scale_and_error_at_distance(upper_bound_dist, angle_normal, reference_scales, principal_ray, screen_point, light_radius, angle_vec)
-    
-    #for i in range(0, num_iterations):
-    #    current_distance = (lower_bound_dist + upper_bound_dist) / 2.0
-    #    scale, error = _get_scale_and_error_at_distance(current_distance, angle_normal, reference_scales, principal_ray, screen_point, light_radius, angle_vec)
-    #    print error
-    #    if lower_bound_error < upper_bound_error:
-    #        upper_bound_error = error
-    #        upper_bound_dist = current_distance
-    #        upper_bound_scale = scale
-    #    else:
-    #        lower_bound_error = error
-    #        lower_bound_dist = current_distance
-    #        lower_bound_scale = scale
-    #        
-    #if lower_bound_error < upper_bound_error:
-    #    return lower_bound_scale, lower_bound_error
-    #return upper_bound_scale, upper_bound_error
     
     scales = {}
     def f(x):
@@ -758,73 +788,52 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, princip
     #        error_values[i][j] = error
     #plot_error(plot_x, plot_y, error_values)
     
-    #ok, new approach to actually optimizing the next shell:
-    #simply walk along the direction orthogonal to the last pixel -> shell vector in the current plane
-    #and find the location with the minimal error
-    
-    
-    lower_bound = 0.0
-    #NOTE: is a hack / guestimate
-    upper_bound = 2.0 * light_radius
-    num_iterations = 16
-    if LOW_QUALITY_MODE:
-        num_iterations = 8
-        
-    phi_step = 0.05
-    final_phi = fov/2.0
-    
-    for direction in (1.0, -1.0):
-        phi = 0.0
-        prev_scale = center_scale
-        while phi < final_phi:
-            phi += phi_step
-            theta = math.pi / 2.0
-            if direction < 0:
-                theta = 3.0 * math.pi / 2.0
-            angle_vec = AngleVector(theta, phi)
-            #TODO: obviously this has to change in the general case
-            optimization_normal = direction * numpy.cross(Point3D(1.0, 0.0, 0.0), _normalize(prev_scale.shell_point - prev_scale.pixel_point))
-            scale, error = optimize_scale_for_angle(optimization_normal, lower_bound, upper_bound, num_iterations, prev_scale, principal_ray, light_radius, angle_vec)
-            scales.append(scale)
-            prev_scale = scale
-            
-    #print out a little graph of the errors of the scales so we can get a sense
-    #NOTE: this shuffling is just so that the errors are printed in an intuitive order
-    num_scales = len(scales)
-    num_scales_in_arc = (num_scales - 1) / 2
-    lower_arc = scales[num_scales_in_arc+1:]
-    lower_arc.reverse()
-    ordered_scales = lower_arc + scales[:num_scales_in_arc+1]
-    print("theta  phi     error")
-    for scale in ordered_scales:
-        print("%.2f %.2f    %.5f" % (scale.angle_vec.theta, scale.angle_vec.phi, scale.shell_distance_error))
-        
-    #export all of the scales as one massive STL
-    merged_mesh = mesh.merge_meshes(ordered_scales)
-    mesh.Mesh(mesh=merged_mesh).export("all_scales.stl")
-    
-    #export the shape formed by the screen pixels as an STL
-    create_screen_mesh(ordered_scales).export("screen.stl")
-    
-    ##for now, we're just going to go up and down so we can visualize in 2D
-    #prev_scale = center_scale
-    #theta = math.pi / 2.0
-    #assert num_phi_steps % 2 == 0, "Please just make it even so that it works nicely for both halves"
-    #phi_values = numpy.linspace(0, fov / 2.0, num=num_phi_steps/2)[1:]
-    #for phi in phi_values:
-    #    #TODO: those distance ranges are completely arbitrary (they define curvature).
-    #    #should really pull them out into a more sensible parameter
-    #    scale = create_scale(phi, theta, prev_scale, principal_ray, dist_range=(-1.0, 2.0), spacing_range=(min_spacing, max_spacing))
-    #    scales.append(scale)
-    #    prev_scale = scale
-    
-    #TODO: create all of the rows instead of just going up
-    ##create the row right, then left
-    #grid = numpy.zeros(())
-    #for i in range():
-    #    scale = create_optimal_scale(phi, theta, scale_to_optimize_against, principal_ray, pixel_bounds)
-    ##extend upward (dual create row because every odd and even row are different)
-    ##extend downward
+    ##ok, new approach to actually optimizing the next shell:
+    ##simply walk along the direction orthogonal to the last pixel -> shell vector in the current plane
+    ##and find the location with the minimal error
+    #
+    #lower_bound = 0.0
+    ##NOTE: is a hack / guestimate
+    #upper_bound = 2.0 * light_radius
+    #num_iterations = 16
+    #if LOW_QUALITY_MODE:
+    #    num_iterations = 8
+    #    
+    #phi_step = 0.05
+    #final_phi = fov/2.0
+    #
+    #for direction in (1.0, -1.0):
+    #    phi = 0.0
+    #    prev_scale = center_scale
+    #    while phi < final_phi:
+    #        phi += phi_step
+    #        theta = math.pi / 2.0
+    #        if direction < 0:
+    #            theta = 3.0 * math.pi / 2.0
+    #        angle_vec = AngleVector(theta, phi)
+    #        #TODO: obviously this has to change in the general case
+    #        optimization_normal = direction * numpy.cross(Point3D(1.0, 0.0, 0.0), _normalize(prev_scale.shell_point - prev_scale.pixel_point))
+    #        scale, error = optimize_scale_for_angle(optimization_normal, lower_bound, upper_bound, num_iterations, prev_scale, principal_ray, light_radius, angle_vec)
+    #        scales.append(scale)
+    #        prev_scale = scale
+    #        
+    ##print out a little graph of the errors of the scales so we can get a sense
+    ##NOTE: this shuffling is just so that the errors are printed in an intuitive order
+    #num_scales = len(scales)
+    #num_scales_in_arc = (num_scales - 1) / 2
+    #lower_arc = scales[num_scales_in_arc+1:]
+    #lower_arc.reverse()
+    #ordered_scales = lower_arc + scales[:num_scales_in_arc+1]
+    #print("theta  phi     error")
+    #for scale in ordered_scales:
+    #    print("%.2f %.2f    %.5f" % (scale.angle_vec.theta, scale.angle_vec.phi, scale.shell_distance_error))
+    #    
+    ##export all of the scales as one massive STL
+    #merged_mesh = mesh.merge_meshes(ordered_scales)
+    #mesh.Mesh(mesh=merged_mesh).export("all_scales.stl")
+    #
+    ##export the shape formed by the screen pixels as an STL
+    #create_screen_mesh(ordered_scales).export("screen.stl")
     
     return scales
 
