@@ -31,7 +31,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import axes3d, Axes3D #<-- Note the capitalization! 
 
 import rotation_matrix
-from optics import Point3D, _normalize, _normalized_vector_angle, _get_arc_plane_normal, angle_vector_to_vector, AngleVector, distToSegment
+from optics import Point3D, _normalize, _normalized_vector_angle, _get_arc_plane_normal, angle_vector_to_vector, AngleVector, distToSegment, closestPointOnLine
 import mesh
 
 #TODO: use the pyglet codes here instead
@@ -648,14 +648,15 @@ def find_scale_and_error_at_best_distance(reference_scales, principal_ray, scree
     best_value = scipy.optimize.fminbound(f, lower_bound_dist, upper_bound_dist, maxfun=num_iterations, xtol=0.001, full_output=False, disp=0)
     return scales[best_value]
     
-def create_scale(phi, theta, prev_scale, principal_ray, dist_range, spacing_range):
-    """
-    actually creates a whole bunch of scales, evaluates each, and returns the best
-    """
-    #make a bunch of possible pixel locations (within the ranges)
-    #for each pixel location:
-        #find the shell distance that minimizes the error (subdivision search)
-        #if that minimal error is the best so far, remember
+def explore_direction(optimization_normal, lower_bound, upper_bound, num_iterations, prev_scale, principal_ray, light_radius, angle_vec):
+    results = {}
+    def f(x):
+        pixel_point = prev_scale.pixel_point + x * optimization_normal
+        scale, error = find_scale_and_error_at_best_distance([prev_scale], principal_ray, pixel_point, light_radius, angle_vec)
+        results[x] = (scale, error)
+        return error
+    best_value, best_error, err, num_calls = scipy.optimize.fminbound(f, lower_bound, upper_bound, maxfun=num_iterations, xtol=0.0001, full_output=True, disp=3)
+    return results[best_value]
     
 def create_surface_via_scales(initial_shell_point, initial_screen_point, principal_ray):
     """
@@ -724,23 +725,31 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, princip
     #simply walk along the direction orthogonal to the last pixel -> shell vector in the current plane
     #and find the location with the minimal error
     prev_scale = center_scale
-    #TODO: obviously this has to change in the general case
-    optimization_normal = numpy.cross(Point3D(1.0, 0.0, 0.0), _normalize(prev_scale.shell_point - prev_scale.pixel_point))
-    results = {}
-    def f(x):
-        pixel_point = prev_scale.pixel_point + x * optimization_normal
-        other_scale, error = find_scale_and_error_at_best_distance([center_scale], principal_ray, pixel_point, light_radius, angle_vec)
-        results[x] = (other_scale, error)
-        return error
+    
     lower_bound = 0.0
     #NOTE: is a hack / guestimate
     upper_bound = 2.0 * light_radius
-    num_iterations = 5
-    best_value, best_error, err, num_calls = scipy.optimize.fminbound(f, lower_bound, upper_bound, maxfun=num_iterations, xtol=0.0001, full_output=True, disp=3)
-    scales.append(results[best_value][0])
+    num_iterations = 16
+    
+    #TODO: obviously this has to change in the general case
+    optimization_normal = numpy.cross(Point3D(1.0, 0.0, 0.0), _normalize(prev_scale.shell_point - prev_scale.pixel_point))
+    approximately_correct_scale, decent_error = explore_direction(optimization_normal, lower_bound, upper_bound, num_iterations, prev_scale, principal_ray, light_radius, angle_vec)
+    print("Decent error: " + str(decent_error))
     
     #after that, simply find the point along that line (from the shell to that pixel) that is closest to the previous pixel
     #(since we don't want the screen to get any bigger than it has to)
+    #and make the shell there
+    #TODO: will have to look at how the optimization curves look for surfaces where we are optimizing against 3 surfaces...
+    #might have to do another call to "explore_direction" to get the absolute best performance
+    best_screen_point = closestPointOnLine(prev_scale.pixel_point, approximately_correct_scale.pixel_point, approximately_correct_scale.shell_point)
+    best_scale, error_for_best_scale = find_scale_and_error_at_best_distance([center_scale], principal_ray, best_screen_point, light_radius, angle_vec)
+    print("'best' error: " + str(error_for_best_scale))
+    
+    #doing another crawl along the line because why not
+    optimization_normal = _normalize(best_screen_point - prev_scale.pixel_point)
+    final_scale, final_error = explore_direction(optimization_normal, lower_bound, upper_bound, num_iterations, prev_scale, principal_ray, light_radius, angle_vec)
+    print("Final error: " + str(final_error))
+    scales.append(final_scale)
     
     ##for now, we're just going to go up and down so we can visualize in 2D
     #prev_scale = center_scale

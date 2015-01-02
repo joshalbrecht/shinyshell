@@ -119,5 +119,13 @@ def distToSegmentSquared(p, v, w):
         return dist2(p, w)
     return dist2(p, v + t * n)
 
+def closestPointOnLine(p, v, w):
+    l2 = dist2(v, w)
+    if (l2 == 0):
+        return dist2(p, v)
+    n = w - v
+    t = ((p - v).dot(n)) / l2
+    return v + t * n
+
 def distToSegment(p, v, w):
     return math.sqrt(distToSegmentSquared(p, v, w))
