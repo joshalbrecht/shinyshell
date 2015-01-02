@@ -96,7 +96,8 @@ class Mesh(object):
     Most important things that this can do is raycast and render.
     """
     
-    def __init__(self, mesh):
+    def __init__(self, mesh=None):
+        assert mesh != None
         self._mesh = mesh
         
         #smooth_loop = vtk.vtkLoopSubdivisionFilter()

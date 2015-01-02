@@ -483,6 +483,32 @@ class Window(pyglet.window.Window):
             event = self.dispatch_events()
             sleep(1.0/self.refreshrate)
             
+class Scale(mesh.Mesh):
+    def __init__(self, shell_pos=None, pixel_pos=None, angle_vec=None, **kwargs):
+        mesh.Mesh.__init__(self, **kwargs)
+        assert shell_pos != None
+        assert pixel_pos != None
+        assert angle_vec != None
+        self._shell_pos = shell_pos
+        self._pixel_pos = pixel_pos
+        self._angle_vec = angle_vec
+        
+    @property
+    def shell_pos(self):
+        return self._shell_pos
+    
+    @property
+    def pixel_pos(self):
+        return self._pixel_pos
+    
+    @property
+    def angle_vec(self):
+        return self._angle_vec
+    
+    def points(self):
+        point_data = self._mesh.GetPoints().GetData()
+        return [numpy.array(point_data.GetTuple(i)) for i in range(0, point_data.GetSize())]
+
 def create_arc(principal_ray, shell_point, screen_point, light_radius, angle_vec, is_horizontal=None):
     assert is_horizontal != None, "Must pass this parameter"
     
@@ -538,11 +564,15 @@ def make_scale(principal_ray, shell_point, screen_point, light_radius, angle_vec
         
     scale = mesh.Mesh(mesh.mesh_from_arcs(ribs))
     #scale.export("temp.stl")
-    trimmed_scale = mesh.Mesh(mesh.trim_mesh_with_cone(scale._mesh, Point3D(0.0, 0.0, 0.0), _normalize(shell_point), light_radius))
+    trimmed_scale = Scale(
+        shell_pos=shell_point,
+        pixel_pos=screen_point,
+        angle_vec=angle_vec,
+        mesh=mesh.trim_mesh_with_cone(scale._mesh, Point3D(0.0, 0.0, 0.0), _normalize(shell_point), light_radius)
+    )
     #trimmed_scale.export("temp.stl")
     return trimmed_scale
     
-#NOTE: we're going to need to make a nice test setup to see if this works like I would expect
 def calculate_error(scale, reference_scale):
     """
     I guess shoot rays all over the scale (from the pixel location), and see which also hit the reference scale, and get the distance
@@ -550,6 +580,18 @@ def calculate_error(scale, reference_scale):
     note: will have to be average error per sample point, since different shells will have different number of sample points
     question is just whether to average the squares, or regularize them
     """
+    start = reference_scale.pixel_pos
+    dist = 0.0
+    num_hits = 0
+    points = reference_scale.points()
+    for point in points:
+        end = 2.0 * (point - start) + start
+        intersection_point, intersection_normal = scale.intersection_plus_normal(start, end)
+        if intersection_point != None:
+            num_hits += 1
+            dist += numpy.linalg.norm(intersection_point - point)
+    average_error = dist / num_hits
+    return average_error
     
 def create_scale(phi, theta, prev_scale, principal_ray, dist_range, spacing_range):
     """
@@ -592,6 +634,8 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, princip
     angle_vec = AngleVector(math.pi/2.0, _normalized_vector_angle(principal_ray, _normalize(shell_point)))
     other_scale = make_scale(principal_ray, shell_point, initial_screen_point+Point3D(0.0, -min_pixel_spot_size, min_pixel_spot_size), parallel_light_cylinder_radius, angle_vec)
     scales = [center_scale, other_scale]
+    
+    calculate_error(other_scale, center_scale)
     
     ##for now, we're just going to go up and down so we can visualize in 2D
     #prev_scale = center_scale
