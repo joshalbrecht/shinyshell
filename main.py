@@ -135,6 +135,7 @@ from pyoptools.misc import pmisc
 import scipy.integrate
 
 import rotation_matrix
+import mesh
 from meshsurface import MeshSurface
 
 from optics import Point3D, Point2D, _normalize, _normalized_vector_angle, _get_arc_plane_normal, angle_vector_to_vector, AngleVector, create_transform_matrix_from_rotations
@@ -207,6 +208,14 @@ class Screen(object):
         """
         return (ScreenComponent(self.size), self.position, self.rotations)
 
+MirrorShell = namedtuple('MirrorShell', ['component', 'position', 'rotations'])
+
+class ExternalMeshSurface(MeshSurface):
+    def __init__(self, filename, *args, **kwargs):
+        Surface.__init__(self, *args, **kwargs)
+        self._mesh = mesh.Mesh(mesh.load_stl(filename))
+        self._inf_vector = numpy.array((numpy.inf,numpy.inf,numpy.inf))
+        
 def create_shell(distance, principal_eye_vector, radius, arcs):
     """
     Create a triangle mesh approximation of the screen
@@ -215,7 +224,15 @@ def create_shell(distance, principal_eye_vector, radius, arcs):
     shape = Circular(radius=radius)
     front_surface = MeshSurface(arcs, shape=shape, reflectivity=1.0)
     component = Component(surflist=[(front_surface, (0, 0, 0), (0, 0, 0))], material=schott["BK7"])
-    MirrorShell = namedtuple('MirrorShell', ['component', 'position', 'rotations'])
+    return MirrorShell(component, (0, 0, 0), (0, 0, 0))
+
+def load_shell(filename, radius):
+    """
+    Load a triangle mesh approximation of the screen from a file
+    """
+    shape = Circular(radius=radius)
+    front_surface = ExternalMeshSurface(filename, shape=shape, reflectivity=1.0)
+    component = Component(surflist=[(front_surface, (0, 0, 0), (0, 0, 0))], material=schott["BK7"])
     return MirrorShell(component, (0, 0, 0), (0, 0, 0))
 
 def create_detector(size, position, rotations):
@@ -290,7 +307,7 @@ def create_rays_parallel_to_eye(screen, fov):
     rays = []
     for x in numpy.arange(-PUPIL, PUPIL, 0.2):
         for y in numpy.arange(-PUPIL, PUPIL, 0.2):
-            rays.append( Ray(pos=(x, y, -30), dir=(0, 0, 1)) )
+            rays.append( Ray(pos=(x, y, -10), dir=(0, 0, -1)) )
     return rays
 
 def create_rays(screen, fov):
@@ -431,17 +448,18 @@ def main_3d():
     shell_distance = 60.0
     shell_radius = 60.0
     
-    #create the main arc
-    starting_point = principal_eye_vector * shell_distance
-    spine = create_new_arc(screen, principal_eye_vector, starting_point, is_horizontal=True)
-    #create each of the arcs reaching off of the spine
-    arcs = []
-    for point in spine:
-        arc = create_new_arc(screen, principal_eye_vector, point, is_horizontal=False)
-        arcs.append(arc)
-        
-    shell = create_shell(shell_distance, principal_eye_vector, shell_radius, arcs)
-    detector = create_detector()
+    ##create the main arc
+    #starting_point = principal_eye_vector * shell_distance
+    #spine = create_new_arc(screen, principal_eye_vector, starting_point, is_horizontal=True)
+    ##create each of the arcs reaching off of the spine
+    #arcs = []
+    #for point in spine:
+    #    arc = create_new_arc(screen, principal_eye_vector, point, is_horizontal=False)
+    #    arcs.append(arc)
+    #    
+    #shell = create_shell(shell_distance, principal_eye_vector, shell_radius, arcs)
+    shell = load_shell("all_scales.stl", shell_radius)
+    detector = create_detector((500,500), screen_location*3, screen_rotation)
     raylist = create_rays_parallel_to_eye(screen, fov)
 
     # add ray shooting out of center of eye for debugging
@@ -462,7 +480,7 @@ def main_3d():
     spot_diagram(detector.ccd)
     app.MainLoop()
 
-
+#TODO: we should probably delete this 2D duplicated code?
 ############################################################
 # Drawing rays and surface in 2D to better understand optics
 ############################################################
@@ -678,4 +696,4 @@ def main_2d():
 
 
 if __name__ == '__main__':
-    main_2d()
+    main_3d()

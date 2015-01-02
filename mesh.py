@@ -141,6 +141,11 @@ def merge_meshes(meshes):
     trianglePolyData.Update()
     return trianglePolyData
 
+def load_stl(filename):
+    reader = vtk.vtkSTLReader()
+    reader.SetFileName(filename)
+    return reader.GetOutput()
+
 class Mesh(object):
     """
     Basically just a collection of oriented triangles.
