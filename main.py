@@ -305,9 +305,10 @@ def create_rays_from_screen(screen, fov):
 
 def create_rays_parallel_to_eye(screen, fov):
     rays = []
-    for x in numpy.arange(-PUPIL, PUPIL, 0.2):
-        for y in numpy.arange(-PUPIL, PUPIL, 0.2):
-            rays.append( Ray(pos=(x, y, -10), dir=(0, 0, -1)) )
+    x = 0.0
+    #for x in numpy.arange(-PUPIL, PUPIL, 0.2):
+    for y in numpy.arange(-PUPIL, PUPIL, 0.2):
+        rays.append( Ray(pos=(x, y, -10), dir=(0, 0, -1)) )
     return rays
 
 def create_rays(screen, fov):
@@ -427,6 +428,57 @@ def create_new_arc(screen, principal_ray, point0, is_horizontal=None):
     
     return numpy.array(result)
 
+def broken_create_arc(screen, principal_ray, shell_point, is_horizontal=True):
+#def broken_create_arc(principal_ray, shell_point, screen_point, light_radius, angle_vec, is_horizontal=None):
+    assert is_horizontal != None, "Must pass this parameter"
+    angle_vec = AngleVector(0.0, 0.0)
+    screen_point = screen.position
+    
+    ##HACK: just seeing what happens if I do this:
+    #shell_to_screen_vec = screen_point - shell_point
+    #screen_point = 20.0 * shell_to_screen_vec + shell_point
+    
+    #define a vector field for the surface normals of the shell.
+    #They are completely constrained given the location of the pixel and the fact
+    #that the reflecting ray must be at a particular angle        
+    arc_plane_normal = _get_arc_plane_normal(principal_ray, is_horizontal)
+    desired_light_direction_off_screen_towards_eye = -1.0 * angle_vector_to_vector(angle_vec, principal_ray)
+    def f(point, t):
+        point_to_screen_vec = _normalize(screen_point - point)
+        surface_normal = _normalize(point_to_screen_vec + desired_light_direction_off_screen_towards_eye)
+        derivative = _normalize(numpy.cross(surface_normal, arc_plane_normal))
+        return derivative
+    
+    #TODO: this should really be based on light_radius...
+    
+    #estimate how long the piece of the shell will be (the one that is large enough to reflect all rays)
+    #overestimates will waste time, underestimates cause it to crash :-P
+    #note that we're doing this one half at a time
+    def estimate_t_values():
+        #TODO: make this faster if necessary by doing the following:
+            #define the simple line that reflects the primary ray
+            #intersect that with the max and min rays from the eye
+            #check the distance between those intersections and double it or something
+        t_step = 0.5
+        #if LOW_QUALITY_MODE:
+        #    t_step = 0.5
+        max_t = 5.0
+        return numpy.arange(0.0, max_t, t_step)
+    t_values = estimate_t_values()
+
+    #use the vector field to define the exact shape of the surface (first half)
+    half_arc = scipy.integrate.odeint(f, shell_point, t_values)
+    
+    #do the other half as well
+    def g(point, t):
+        return -1.0 * f(point, t)
+    
+    #combine them
+    other_half_arc = list(scipy.integrate.odeint(g, shell_point, t_values))
+    other_half_arc.pop(0)
+    other_half_arc.reverse()
+    return other_half_arc + list(half_arc)
+
 def main_3d():
     #create the main app
     app = wx.PySimpleApp()
@@ -456,9 +508,20 @@ def main_3d():
     #for point in spine:
     #    arc = create_new_arc(screen, principal_eye_vector, point, is_horizontal=False)
     #    arcs.append(arc)
-    #    
     #shell = create_shell(shell_distance, principal_eye_vector, shell_radius, arcs)
-    shell = load_shell("all_scales.stl", shell_radius)
+    
+    #create the main arc
+    starting_point = principal_eye_vector * shell_distance
+    spine = broken_create_arc(screen, principal_eye_vector, starting_point, is_horizontal=True)
+    #create each of the arcs reaching off of the spine
+    arcs = []
+    for point in spine:
+        arc = broken_create_arc(screen, principal_eye_vector, point, is_horizontal=False)
+        arcs.append(arc)
+    shell = create_shell(shell_distance, principal_eye_vector, shell_radius, arcs)
+    
+    #shell = load_shell("all_scales.stl", shell_radius)
+    
     detector = create_detector((500,500), screen_location*3, screen_rotation)
     raylist = create_rays_parallel_to_eye(screen, fov)
 
@@ -467,11 +530,12 @@ def main_3d():
 
 
     #raylist = []
-    iris = create_iris()
-    cornea = create_cornea()
+    #iris = create_iris()
+    #cornea = create_cornea()
 
     #assemble them into the system
-    system = System(complist=[screen.create_component(), shell, detector, cornea, iris], n=1)
+    #system = System(complist=[screen.create_component(), shell, detector, cornea, iris], n=1)
+    system = System(complist=[screen.create_component(), shell, detector], n=1)
     system.ray_add(raylist)
 
     #run the simulation

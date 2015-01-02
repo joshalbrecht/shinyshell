@@ -548,8 +548,8 @@ class Scale(mesh.Mesh):
                 self._rays.append(LightRay(ray.start, intersection))
                 reverse_ray_direction = _normalize(ray.start - ray.end)
                 midpoint = closestPointOnLine(reverse_ray_direction, Point3D(0.0, 0.0, 0.0), normal)
-                reflection_direction = (2.0 * (midpoint - reverse_ray_direction))
-                self._rays.append(LightRay(intersection, reflection_length * reflection_direction))
+                reflection_direction = (2.0 * (midpoint - reverse_ray_direction)) + reverse_ray_direction
+                self._rays.append(LightRay(intersection, intersection + reflection_length * reflection_direction))
 
 def create_arc(principal_ray, shell_point, screen_point, light_radius, angle_vec, is_horizontal=None):
     assert is_horizontal != None, "Must pass this parameter"
@@ -579,7 +579,7 @@ def create_arc(principal_ray, shell_point, screen_point, light_radius, angle_vec
             #define the simple line that reflects the primary ray
             #intersect that with the max and min rays from the eye
             #check the distance between those intersections and double it or something
-        t_step = 0.1
+        t_step = 0.01
         if LOW_QUALITY_MODE:
             t_step = 0.5
         max_t = 5.0
