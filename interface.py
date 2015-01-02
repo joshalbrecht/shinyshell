@@ -39,6 +39,9 @@ LEFT_MOUSE_BUTTON_CODE = 1L
 MIDDLE_MOUSE_BUTTON_CODE = 2L
 RIGHT_MOUSE_BUTTON_CODE = 4L
 
+#enable this to speed up development. Just cuts back on a lot of precision
+LOW_QUALITY_MODE = True
+
 class Plane(object):
     def __init__(self, point, normal):
         self._point = point
@@ -538,6 +541,8 @@ def create_arc(principal_ray, shell_point, screen_point, light_radius, angle_vec
             #intersect that with the max and min rays from the eye
             #check the distance between those intersections and double it or something
         t_step = 0.2
+        if LOW_QUALITY_MODE:
+            t_step = 0.5
         max_t = 5.0
         return numpy.arange(0.0, max_t, t_step)
     t_values = estimate_t_values()
@@ -614,6 +619,8 @@ def find_scale_and_error_at_best_distance(reference_scales, principal_ray, scree
     """
     #seems pretty arbitrary, but honestly at that point the gains here are pretty marginal
     num_iterations = 14
+    if LOW_QUALITY_MODE:
+        num_iterations = 8
     angle_normal = angle_vector_to_vector(angle_vec, principal_ray)
     reference_distance = numpy.linalg.norm(reference_scales[0].shell_point)
     
@@ -730,6 +737,8 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, princip
     #NOTE: is a hack / guestimate
     upper_bound = 2.0 * light_radius
     num_iterations = 16
+    if LOW_QUALITY_MODE:
+        num_iterations = 8
     
     #TODO: obviously this has to change in the general case
     optimization_normal = numpy.cross(Point3D(1.0, 0.0, 0.0), _normalize(prev_scale.shell_point - prev_scale.pixel_point))
