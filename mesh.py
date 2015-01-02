@@ -104,6 +104,43 @@ def trim_mesh_with_cone(mesh, cone_point, cone_normal, cone_radius):
 
     return trimmed_mesh
 
+def merge_meshes(meshes):
+    point_offset = 0
+    points = vtk.vtkPoints()
+    triangles = vtk.vtkCellArray()
+    for m in meshes:
+        mesh = m._mesh
+        
+        #add every point
+        point_data = mesh.GetPoints().GetData()
+        for i in range(0, point_data.GetSize()):
+            point = point_data.GetTuple(i)
+            points.InsertNextPoint(point[0], point[1], point[2])
+    
+        #add every triangle with the correct point offset
+        cell_array = mesh.GetPolys()
+        polygons = cell_array.GetData()
+        for i in xrange(0,  cell_array.GetNumberOfCells()):
+            triangle = [polygons.GetValue(j) for j in xrange(i*4+1, i*4+4)]
+            
+            new_triangle = vtk.vtkTriangle()
+            pointIds = new_triangle.GetPointIds()
+            pointIds.SetId(0, triangle[0] + point_offset)
+            pointIds.SetId(1, triangle[1] + point_offset)
+            pointIds.SetId(2, triangle[2] + point_offset)
+            triangles.InsertNextCell(new_triangle)
+        
+        point_offset += point_data.GetSize()
+        
+    # Create a polydata object
+    trianglePolyData = vtk.vtkPolyData()
+
+    # Add the geometry and topology to the polydata
+    trianglePolyData.SetPoints(points)
+    trianglePolyData.SetPolys(triangles)
+    trianglePolyData.Update()
+    return trianglePolyData
+
 class Mesh(object):
     """
     Basically just a collection of oriented triangles.

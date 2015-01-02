@@ -499,6 +499,7 @@ class Scale(mesh.Mesh):
         self._shell_point = shell_point
         self._pixel_point = pixel_point
         self._angle_vec = angle_vec
+        self.shell_distance_error = None
         
     @property
     def shell_point(self):
@@ -610,6 +611,7 @@ def _get_scale_and_error_at_distance(distance, angle_normal, reference_scales, p
     shell_point = distance * angle_normal
     scale = make_scale(principal_ray, shell_point, screen_point, light_radius, angle_vec)
     error = max([calculate_error(scale, reference_scale) for reference_scale in reference_scales])
+    scale.shell_distance_error = error
     return scale, error
 
 #TODO: there are almost certainly better ways to optimize something like this, see numpy
@@ -664,6 +666,32 @@ def explore_direction(optimization_normal, lower_bound, upper_bound, num_iterati
         return error
     best_value, best_error, err, num_calls = scipy.optimize.fminbound(f, lower_bound, upper_bound, maxfun=num_iterations, xtol=0.0001, full_output=True, disp=3)
     return results[best_value]
+
+def optimize_scale_for_angle(optimization_normal, lower_bound, upper_bound, num_iterations, prev_scale, principal_ray, light_radius, angle_vec):
+    approximately_correct_scale, decent_error = explore_direction(optimization_normal, lower_bound, upper_bound, num_iterations, prev_scale, principal_ray, light_radius, angle_vec)
+    #print("Decent error: " + str(decent_error))
+    
+    #after that, simply find the point along that line (from the shell to that pixel) that is closest to the previous pixel
+    #(since we don't want the screen to get any bigger than it has to)
+    #and make the shell there
+    #TODO: will have to look at how the optimization curves look for surfaces where we are optimizing against 3 surfaces...
+    #might have to do another call to "explore_direction" to get the absolute best performance
+    best_screen_point = closestPointOnLine(prev_scale.pixel_point, approximately_correct_scale.pixel_point, approximately_correct_scale.shell_point)
+    #best_scale, error_for_best_scale = find_scale_and_error_at_best_distance([prev_scale], principal_ray, best_screen_point, light_radius, angle_vec)
+    #print("'best' error: " + str(error_for_best_scale))
+    
+    #doing another crawl along the line because why not
+    optimization_normal = _normalize(best_screen_point - prev_scale.pixel_point)
+    final_scale, final_error = explore_direction(optimization_normal, lower_bound, upper_bound, num_iterations, prev_scale, principal_ray, light_radius, angle_vec)
+    #print("Final error: " + str(final_error))
+    #scales.append(final_scale)
+    return final_scale, final_error
+    
+def create_screen_mesh(ordered_scales):
+    arc = [scale.pixel_point for scale in ordered_scales]
+    left_arc = [p + Point3D(-1.0, 0.0, 0.0) for p in arc]
+    right_arc = [p + Point3D(1.0, 0.0, 0.0) for p in arc]
+    return mesh.Mesh(mesh=mesh.mesh_from_arcs([right_arc, arc, left_arc]))
     
 def create_surface_via_scales(initial_shell_point, initial_screen_point, principal_ray):
     """
@@ -691,10 +719,12 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, princip
     
     #create the first scale
     center_scale = make_scale(principal_ray, initial_shell_point, initial_screen_point, light_radius, AngleVector(0.0, 0.0))
+    center_scale.shell_distance_error = 0.0
+    scales = [center_scale]
     
     #create another scale right above it for debugging the error function
-    shell_point = initial_shell_point + Point3D(0.0, 3.0, -1.0)
-    angle_vec = AngleVector(math.pi/2.0, _normalized_vector_angle(principal_ray, _normalize(shell_point)))
+    #shell_point = initial_shell_point + Point3D(0.0, 3.0, -1.0)
+    #angle_vec = AngleVector(math.pi/2.0, _normalized_vector_angle(principal_ray, _normalize(shell_point)))
     #other_scale = make_scale(principal_ray, shell_point, initial_screen_point+Point3D(0.0, -min_pixel_spot_size, min_pixel_spot_size), light_radius, angle_vec)
     #scales = [center_scale, other_scale]
     
@@ -708,7 +738,7 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, princip
     #wheeee
     #now let's make a grid of different pixel locations, and how those impact the final error
     #scales = [center_scale, other_scale]
-    scales = [center_scale]
+    #scales = [center_scale]
     
     ##make a 5x5 grid, centered on the previous screen location, and with +/- reasonable spacing * 2 in either direction
     #spacing = (max_spacing + min_spacing) / 2.0
@@ -731,7 +761,7 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, princip
     #ok, new approach to actually optimizing the next shell:
     #simply walk along the direction orthogonal to the last pixel -> shell vector in the current plane
     #and find the location with the minimal error
-    prev_scale = center_scale
+    
     
     lower_bound = 0.0
     #NOTE: is a hack / guestimate
@@ -739,26 +769,42 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, princip
     num_iterations = 16
     if LOW_QUALITY_MODE:
         num_iterations = 8
+        
+    phi_step = 0.05
+    final_phi = 0.14#fov/2.0
     
-    #TODO: obviously this has to change in the general case
-    optimization_normal = numpy.cross(Point3D(1.0, 0.0, 0.0), _normalize(prev_scale.shell_point - prev_scale.pixel_point))
-    approximately_correct_scale, decent_error = explore_direction(optimization_normal, lower_bound, upper_bound, num_iterations, prev_scale, principal_ray, light_radius, angle_vec)
-    print("Decent error: " + str(decent_error))
+    for direction in (1.0, -1.0):
+        phi = 0.0
+        prev_scale = center_scale
+        while phi < final_phi:
+            phi += phi_step
+            theta = math.pi / 2.0
+            if direction < 0:
+                theta = 3.0 * math.pi / 2.0
+            angle_vec = AngleVector(theta, phi)
+            #TODO: obviously this has to change in the general case
+            optimization_normal = direction * numpy.cross(Point3D(1.0, 0.0, 0.0), _normalize(prev_scale.shell_point - prev_scale.pixel_point))
+            scale, error = optimize_scale_for_angle(optimization_normal, lower_bound, upper_bound, num_iterations, prev_scale, principal_ray, light_radius, angle_vec)
+            scales.append(scale)
+            prev_scale = scale
+            
+    #print out a little graph of the errors of the scales so we can get a sense
+    #NOTE: this shuffling is just so that the errors are printed in an intuitive order
+    num_scales = len(scales)
+    num_scales_in_arc = (num_scales - 1) / 2
+    lower_arc = scales[num_scales_in_arc+1:]
+    lower_arc.reverse()
+    ordered_scales = lower_arc + scales[:num_scales_in_arc+1]
+    print("theta  phi     error")
+    for scale in ordered_scales:
+        print("%.2f %.2f    %.5f" % (scale.angle_vec.theta, scale.angle_vec.phi, scale.shell_distance_error))
+        
+    #export all of the scales as one massive STL
+    merged_mesh = mesh.merge_meshes(ordered_scales)
+    mesh.Mesh(mesh=merged_mesh).export("all_scales.stl")
     
-    #after that, simply find the point along that line (from the shell to that pixel) that is closest to the previous pixel
-    #(since we don't want the screen to get any bigger than it has to)
-    #and make the shell there
-    #TODO: will have to look at how the optimization curves look for surfaces where we are optimizing against 3 surfaces...
-    #might have to do another call to "explore_direction" to get the absolute best performance
-    best_screen_point = closestPointOnLine(prev_scale.pixel_point, approximately_correct_scale.pixel_point, approximately_correct_scale.shell_point)
-    best_scale, error_for_best_scale = find_scale_and_error_at_best_distance([center_scale], principal_ray, best_screen_point, light_radius, angle_vec)
-    print("'best' error: " + str(error_for_best_scale))
-    
-    #doing another crawl along the line because why not
-    optimization_normal = _normalize(best_screen_point - prev_scale.pixel_point)
-    final_scale, final_error = explore_direction(optimization_normal, lower_bound, upper_bound, num_iterations, prev_scale, principal_ray, light_radius, angle_vec)
-    print("Final error: " + str(final_error))
-    scales.append(final_scale)
+    #export the shape formed by the screen pixels as an STL
+    create_screen_mesh(ordered_scales).export("screen.stl")
     
     ##for now, we're just going to go up and down so we can visualize in 2D
     #prev_scale = center_scale
