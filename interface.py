@@ -173,9 +173,9 @@ class ShellSection(object):
     Note that when any of those attributes are set, the object will recalculate everything based on them
     """
     
-    def __init__(self, shell_pos, pixel_pos, num_rays, pupil_radius):
-        self._shell = ReflectiveSurface(pos=shell_pos, color=(1.0, 1.0, 1.0), change_handler=self._on_change)
-        self._pixel = ScreenPixel(pos=pixel_pos, color=(1.0, 1.0, 1.0), change_handler=self._on_change)
+    def __init__(self, shell_point, pixel_point, num_rays, pupil_radius):
+        self._shell = ReflectiveSurface(pos=shell_point, color=(1.0, 1.0, 1.0), change_handler=self._on_change)
+        self._pixel = ScreenPixel(pos=pixel_point, color=(1.0, 1.0, 1.0), change_handler=self._on_change)
         self._num_rays = num_rays
         self._pupil_radius = pupil_radius
         
@@ -484,22 +484,22 @@ class Window(pyglet.window.Window):
             sleep(1.0/self.refreshrate)
             
 class Scale(mesh.Mesh):
-    def __init__(self, shell_pos=None, pixel_pos=None, angle_vec=None, **kwargs):
+    def __init__(self, shell_point=None, pixel_point=None, angle_vec=None, **kwargs):
         mesh.Mesh.__init__(self, **kwargs)
-        assert shell_pos != None
-        assert pixel_pos != None
+        assert shell_point != None
+        assert pixel_point != None
         assert angle_vec != None
-        self._shell_pos = shell_pos
-        self._pixel_pos = pixel_pos
+        self._shell_point = shell_point
+        self._pixel_point = pixel_point
         self._angle_vec = angle_vec
         
     @property
-    def shell_pos(self):
-        return self._shell_pos
+    def shell_point(self):
+        return self._shell_point
     
     @property
-    def pixel_pos(self):
-        return self._pixel_pos
+    def pixel_point(self):
+        return self._pixel_point
     
     @property
     def angle_vec(self):
@@ -565,8 +565,8 @@ def make_scale(principal_ray, shell_point, screen_point, light_radius, angle_vec
     scale = mesh.Mesh(mesh.mesh_from_arcs(ribs))
     #scale.export("temp.stl")
     trimmed_scale = Scale(
-        shell_pos=shell_point,
-        pixel_pos=screen_point,
+        shell_point=shell_point,
+        pixel_point=screen_point,
         angle_vec=angle_vec,
         mesh=mesh.trim_mesh_with_cone(scale._mesh, Point3D(0.0, 0.0, 0.0), _normalize(shell_point), light_radius)
     )
@@ -580,7 +580,7 @@ def calculate_error(scale, reference_scale):
     note: will have to be average error per sample point, since different shells will have different number of sample points
     question is just whether to average the squares, or regularize them
     """
-    start = reference_scale.pixel_pos
+    start = reference_scale.pixel_point
     dist = 0.0
     num_hits = 0
     points = reference_scale.points()
@@ -592,6 +592,42 @@ def calculate_error(scale, reference_scale):
             dist += numpy.linalg.norm(intersection_point - point)
     average_error = dist / num_hits
     return average_error
+
+def _get_scale_and_error_at_distance(distance, angle_normal, reference_scales, principal_ray, screen_point, light_radius, angle_vec):
+    shell_point = distance * angle_normal
+    scale = make_scale(principal_ray, shell_point, screen_point, light_radius, angle_vec)
+    error = max([calculate_error(scale, reference_scale) for reference_scale in reference_scales])
+    return scale, error
+
+#TODO: there are almost certainly better ways to optimize something like this, see numpy
+def find_scale_and_error_at_best_distance(reference_scales, principal_ray, screen_point, light_radius, angle_vec):
+    """
+    iteratively find the best distance that this scale can be away from the reference scales
+    """
+    num_iterations= 10
+    angle_normal = angle_vector_to_vector(angle_vec, principal_ray)
+    reference_distance = numpy.linalg.norm(reference_scales[0].shell_point)
+
+    lower_bound_dist = reference_distance - light_radius
+    lower_bound_scale, lower_bound_error = _get_scale_and_error_at_distance(lower_bound_dist, angle_normal, reference_scales, principal_ray, screen_point, light_radius, angle_vec)
+    upper_bound_dist = reference_distance + light_radius
+    upper_bound_scale, upper_bound_error = _get_scale_and_error_at_distance(upper_bound_dist, angle_normal, reference_scales, principal_ray, screen_point, light_radius, angle_vec)
+    
+    for i in range(0, num_iterations):
+        current_distance = (lower_bound_dist + upper_bound_dist) / 2.0
+        scale, error = _get_scale_and_error_at_distance(current_distance, angle_normal, reference_scales, principal_ray, screen_point, light_radius, angle_vec)
+        if lower_bound_error < upper_bound_error:
+            upper_bound_error = error
+            upper_bound_dist = current_distance
+            upper_bound_scale = scale
+        else:
+            lower_bound_error = error
+            lower_bound_dist = current_distance
+            lower_bound_scale = scale
+            
+    if lower_bound_error < upper_bound_error:
+        return lower_bound_scale, lower_bound_error
+    return upper_bound_scale, upper_bound_error
     
 def create_scale(phi, theta, prev_scale, principal_ray, dist_range, spacing_range):
     """
@@ -614,7 +650,7 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, princip
     
     #based on the fact that your pupil is approximately this big
     #basically defines how big the region is that we are trying to put in focus with a given scale
-    parallel_light_cylinder_radius = 3.0
+    light_radius = 3.0
     fov = math.pi / 2.0
     #per whole the screen. So 90 steps for a 90 degree total FOV would be one step per degree
     total_phi_steps = 90
@@ -627,15 +663,19 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, princip
     max_spacing = (float(total_vertical_resolution) / float(total_phi_steps)) * max_pixel_spot_size
     
     #create the first scale
-    center_scale = make_scale(principal_ray, initial_shell_point, initial_screen_point, parallel_light_cylinder_radius, AngleVector(0.0, 0.0))
+    center_scale = make_scale(principal_ray, initial_shell_point, initial_screen_point, light_radius, AngleVector(0.0, 0.0))
     
     #create another scale right above it for debugging the error function
     shell_point = initial_shell_point + Point3D(0.0, 3.0, -1.0)
     angle_vec = AngleVector(math.pi/2.0, _normalized_vector_angle(principal_ray, _normalize(shell_point)))
-    other_scale = make_scale(principal_ray, shell_point, initial_screen_point+Point3D(0.0, -min_pixel_spot_size, min_pixel_spot_size), parallel_light_cylinder_radius, angle_vec)
-    scales = [center_scale, other_scale]
+    #other_scale = make_scale(principal_ray, shell_point, initial_screen_point+Point3D(0.0, -min_pixel_spot_size, min_pixel_spot_size), light_radius, angle_vec)
+    #scales = [center_scale, other_scale]
     
-    calculate_error(other_scale, center_scale)
+    #calculate_error(other_scale, center_scale)
+    
+    other_scale, error = find_scale_and_error_at_best_distance([center_scale], principal_ray, initial_screen_point+Point3D(0.0, -min_pixel_spot_size, min_pixel_spot_size), light_radius, angle_vec)
+    print error
+    scales = [center_scale, other_scale]
     
     ##for now, we're just going to go up and down so we can visualize in 2D
     #prev_scale = center_scale
