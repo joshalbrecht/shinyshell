@@ -686,6 +686,8 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, princip
     
     scales = [center_scale, other_scale]
     
+    #sys.exit()
+    
     alpha = 0.7
     phi_ext = 2 * math.pi * 0.5
     def flux_qubit_potential(phi_m, phi_p):

@@ -47,30 +47,46 @@ def mesh_from_arcs(arcs):
 
     return trianglePolyData
 
+#NOTE: this would be much cleaner if I had not inlined the logic about how far away the points are from the light cone
 def trim_mesh_with_cone(mesh, cone_point, cone_normal, cone_radius):
     """
     returns a mesh that contains only the triangles that where inside of the cone
     """
     cone_end = cone_point + cone_normal*100.0
-    def inside_cone(point):
-        return optics.distToLineSquared(point, cone_point, cone_end) < cone_radius*cone_radius
-    
+    sq_radius = cone_radius*cone_radius
+    w = cone_point
+    v = cone_end
+    n = w - v
+    v_w_sq_len = optics.dist2(v, w)
+   
     points = mesh.GetPoints().GetData()
     cell_array = mesh.GetPolys()
     polygons = cell_array.GetData()
     triangles = vtk.vtkCellArray()
     for i in xrange(0,  cell_array.GetNumberOfCells()):
         triangle = [polygons.GetValue(j) for j in xrange(i*4+1, i*4+4)]
-        a = points.GetTuple(triangle[0])
-        b = points.GetTuple(triangle[1])
-        c = points.GetTuple(triangle[2])
-        if inside_cone(a) and inside_cone(b) and inside_cone(c):
-            cell = vtk.vtkTriangle()
-            pointIds = cell.GetPointIds()
-            pointIds.SetId(0, triangle[0])
-            pointIds.SetId(1, triangle[1])
-            pointIds.SetId(2, triangle[2])
-            triangles.InsertNextCell(cell)
+        
+        p = points.GetTuple(triangle[0])
+        delta = p - (v + (((p - v).dot(n)) / v_w_sq_len) * n)
+        if delta.dot(delta) > sq_radius:
+            continue
+        
+        p = points.GetTuple(triangle[1])
+        delta = p - (v + (((p - v).dot(n)) / v_w_sq_len) * n)
+        if delta.dot(delta) > sq_radius:
+            continue
+        
+        p = points.GetTuple(triangle[2])
+        delta = p - (v + (((p - v).dot(n)) / v_w_sq_len) * n)
+        if delta.dot(delta) > sq_radius:
+            continue
+        
+        cell = vtk.vtkTriangle()
+        pointIds = cell.GetPointIds()
+        pointIds.SetId(0, triangle[0])
+        pointIds.SetId(1, triangle[1])
+        pointIds.SetId(2, triangle[2])
+        triangles.InsertNextCell(cell)
             
     # Create a polydata object
     trianglePolyData = vtk.vtkPolyData()
