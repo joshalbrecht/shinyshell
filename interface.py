@@ -26,6 +26,9 @@ import pyglet.window.key
 import numpy
 import scipy.integrate
 
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import axes3d, Axes3D #<-- Note the capitalization! 
+
 import rotation_matrix
 from optics import Point3D, _normalize, _normalized_vector_angle, _get_arc_plane_normal, angle_vector_to_vector, AngleVector, distToSegment
 import mesh
@@ -604,7 +607,8 @@ def find_scale_and_error_at_best_distance(reference_scales, principal_ray, scree
     """
     iteratively find the best distance that this scale can be away from the reference scales
     """
-    num_iterations= 10
+    #seems pretty arbitrary, but honestly at that point the gains here are pretty marginal
+    num_iterations = 14
     angle_normal = angle_vector_to_vector(angle_vec, principal_ray)
     reference_distance = numpy.linalg.norm(reference_scales[0].shell_point)
 
@@ -616,6 +620,7 @@ def find_scale_and_error_at_best_distance(reference_scales, principal_ray, scree
     for i in range(0, num_iterations):
         current_distance = (lower_bound_dist + upper_bound_dist) / 2.0
         scale, error = _get_scale_and_error_at_distance(current_distance, angle_normal, reference_scales, principal_ray, screen_point, light_radius, angle_vec)
+        #print error
         if lower_bound_error < upper_bound_error:
             upper_bound_error = error
             upper_bound_dist = current_distance
@@ -675,7 +680,21 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, princip
     
     other_scale, error = find_scale_and_error_at_best_distance([center_scale], principal_ray, initial_screen_point+Point3D(0.0, -min_pixel_spot_size, min_pixel_spot_size), light_radius, angle_vec)
     print error
+    
+    #wheeee
+    #now let's make a grid of different pixel locations, and how those impact the final error
+    
     scales = [center_scale, other_scale]
+    
+    alpha = 0.7
+    phi_ext = 2 * math.pi * 0.5
+    def flux_qubit_potential(phi_m, phi_p):
+        return 2 + alpha - 2 * numpy.cos(phi_p)*numpy.cos(phi_m) - alpha * numpy.cos(phi_ext - 2*phi_p)
+    phi_m = numpy.linspace(0, 2*math.pi, 100)
+    phi_p = numpy.linspace(0, 2*math.pi, 100)
+    x,y = numpy.meshgrid(phi_p, phi_m)
+    z = flux_qubit_potential(x, y).T
+    plot_error(x, y, z)
     
     ##for now, we're just going to go up and down so we can visualize in 2D
     #prev_scale = center_scale
@@ -698,6 +717,12 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, princip
     ##extend downward
     
     return scales
+
+def plot_error(x, y, z):
+    fig = plt.figure()
+    ax = Axes3D(fig)
+    p = ax.plot_wireframe(x, y, z, rstride=4, cstride=4)
+    plt.show()
 
 def main():
     win = Window(23) # set the fps
