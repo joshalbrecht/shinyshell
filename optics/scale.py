@@ -51,7 +51,7 @@ class Scale(optics.mesh.Mesh):
             
     def _calculate_rays(self):
         infinite_rays = []
-        base_eye_ray = Ray(Point3D(0,0,0), 1.2 * self._shell_point)
+        base_eye_ray = Ray(Point3D(0,0,0), 100.0 * self._shell_point)
         if self._num_rays == 1:
             infinite_rays.append(base_eye_ray)
         else:
@@ -65,7 +65,7 @@ class Scale(optics.mesh.Mesh):
         reflection_length = 1.1 * numpy.linalg.norm(self.shell_point - self.pixel_point)
         self._rays = []
         for ray in infinite_rays:
-            intersection, normal = self.intersection_plus_normal(ray.end, ray.start)
+            intersection, normal = self.intersection_plus_normal(ray.start, ray.end)
             normal *= -1.0
             if intersection != None:
                 self._rays.append(LightRay(ray.start, intersection))
@@ -93,6 +93,7 @@ class PolyScale(Scale):
         self._local_to_world_translation = -1.0 * world_to_local_translation
         self._domain_cylinder_point = domain_cylinder_point
         self._domain_cylinder_radius = domain_cylinder_radius
+        self._points = None
         
     def render(self):
         if self._mesh == None:
@@ -105,10 +106,31 @@ class PolyScale(Scale):
     def _world_to_local(self, p):
         return self._world_to_local_rotation.dot(p + self._world_to_local_translation)
     
-    def _create_mesh(self):
-        """
-        Just makes an approximate mesh. For rendering mostly.
-        """
+    def points(self):
+        if self._points == None:
+            self._points = []
+            
+            cone_point = Point3D(0.0, 0.0, 0.0)
+            cone_normal = normalize(self._shell_point)
+            cone_radius = self._domain_cylinder_radius
+
+            cone_end = cone_point + cone_normal*100.0
+            sq_radius = cone_radius*cone_radius
+            w = cone_point
+            v = cone_end
+            n = w - v
+            v_w_sq_len = dist2(v, w)
+            
+            arcs = self._arcs()
+            for arc in arcs:
+                for p in arc:
+                    delta = p - (v + (((p - v).dot(n)) / v_w_sq_len) * n)
+                    if delta.dot(delta) < sq_radius:
+                        self._points.append(p)
+                
+        return self._points
+    
+    def _arcs(self):
         #TODO: probably more robust to find the min and max in each direction (for x and y) before we are out of domain
         #for now we just assume that you're probably not going to go beyond 2.0 * light radius in either direction
         #make arcs along each of the possible x values
@@ -122,10 +144,16 @@ class PolyScale(Scale):
                 point = self._local_to_world(Point3D(x, y, z))
                 arc.append(point)
             arcs.append(arc)
+        return arcs
+    
+    def _create_mesh(self):
+        """
+        Just makes an approximate mesh. For rendering mostly.
+        """
         
         #TODO: rename the mesh module. it's too generic of a name
         #make a mesh from those arcs
-        base_mesh = optics.mesh.mesh_from_arcs(arcs)
+        base_mesh = optics.mesh.mesh_from_arcs(self._arcs())
         
         #trim the mesh given our domain cylinder
         trimmed_mesh = optics.mesh.trim_mesh_with_cone(base_mesh, Point3D(0.0, 0.0, 0.0), normalize(self._shell_point), self._domain_cylinder_radius)

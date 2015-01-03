@@ -61,7 +61,7 @@ class Window(pyglet.window.Window):
             self.left_click = x,y
         
             ray = self._click_to_ray(x, y)
-            obj = SceneObject.pick_object(ray)
+            obj = viewer.scene_objects.SceneObject.pick_object(ray)
             if obj:
                 self.selection = [obj]
             else:

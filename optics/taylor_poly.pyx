@@ -101,6 +101,8 @@ def eval_poly(p, x,y):
 
 cdef class TaylorPoly(object):
     """Class to define surfaces described by a Taylor polynomial
+    
+    TODO: There are some bad things that happen with very high order polys. Like crazy intersections out in the middle of nowhere...
 
     Description
 
@@ -173,18 +175,18 @@ cdef class TaylorPoly(object):
         return self.eval_poly(x, y)
 
     cpdef _intersection(self, start, direction):
-        '''**Point of intersection between a ray and the polynomical surface**
+        '''
+        Point of intersection between a ray and the polynomial surface
 
         This method returns the point of intersection  between the surface
         and the ray. This intersection point is calculated in the coordinate
         system of the surface.
 
-           iray -- incident ray
-
-        iray must be in the coordinate system of the surface
+        start and direction must be in the coordinate system of the surface
         '''
+        
 
-        ## Polinomios que describen las ecuaciones parametricas del rayo
+        ## Polynomial parametric equations describing the beam
         ## x=m_x t +b_x
         ## y=m_y t +b_y
         ## z=m_z t +b_z
@@ -195,15 +197,14 @@ cdef class TaylorPoly(object):
         RY=[dy,oy]
         RZ=[dz,oz]
 
-        ## Generar el polinomio de t a resolver (remplazar x,y,z con sus
-        ## correspondientes expresiones dependientes de t)
+        ## generate solving polynomial ( replacing x , y, z with corresponding dependent expressions t)
 
         Pows=self.cohef.nonzero()
         y_pow=Pows[0]
         x_pow=Pows[1]
-        ##reemplazar X y Y en la ecuacion de la superficie
-        result=[0] #inicializar el polynomio
-
+        ##replace X and Y in the equation of the surface
+        result=[0] #initialize polynomial
+        
         for i in range(y_pow.shape[0]):
             ## self.cohef[y_pow[i],x_pow[i]],"y^",y_pow[i],"x^",x_pow[i]
             tx=polypow(RX,x_pow[i])
@@ -211,33 +212,33 @@ cdef class TaylorPoly(object):
             tm=self.cohef[y_pow[i],x_pow[i]]*polymul(tx,ty)
             result=polyadd(result,tm)
 
-        ##Colocar z en la expresion para que quede f(x(t),y(t),z(t))=0
+        ##Z in place so that it is the expression f ( x (t ) , y (t) , z (t ) ) = 0
         result=polysub(result,RZ)
 
         # There is a problem when the coefficients are << 1 but not 0
         # Truncate the values to solve this problem
-        #TODO: find an other solution to this problem
+        #TODO: find another solution to this problem
 
         result=where(abs(result)<1e-14,0,result)
 
-        ##Encontrar las soluciones de la expresion
+        ##Find the solutions of the expression
         r=roots(result)
+        
         dist=inf
         ret_val=array((inf,inf,inf))
         for i in r:
-            #Solo tener en cuenta soluciones con i positivo
-            #si i es negativo, la superficie esta detras del rayo...
-            # no hay corte, ademas i debe ser real
+            #Just consider positive solutions i
+            #if i is negative , the surface is behind the lightning ...
+            #no cutting , plus i must be real
             if i>=0. and isreal(i):
                 i=i.real
                 pc=array((polyval(RX,i),polyval(RY,i),polyval(RZ,i)))
-                ## distancia del origen del rayo al punto de corte (al cuadrado)
+                ## ray origin distance to the cutting point ( squared)
                 dist_c=dot(pc-start,pc-start)
-                #Buscar la distancia minima
+                #Find the minimum distance
                 if dist_c<dist:
                     ret_val=pc
                     dist=dist_c
-
 
         return ret_val
 

@@ -3,6 +3,7 @@
 A bunch of functions for creating surfaces, casting rays, etc
 """
 
+import time
 import math
 import itertools
 
@@ -78,10 +79,12 @@ def polyfit2d(x, y, z, order=3):
 #but it's for efficiency reasons--matrix multiplying a bajillion points into the correct space is going to be way slower than just
 #making them in the correct coordinate system in the first place
 #really, should probably hide create_arc inside of PolyScale, but it's used elsewhere, so leaving it out for now
-def make_scale(principal_ray, shell_point, screen_point, light_radius, angle_vec):
+def make_scale(principal_ray, shell_point, screen_point, light_radius, angle_vec, poly_order):
     """
     returns a non-trimmed scale patch based on the point (where the shell should be centered)
     angle_vec is passed in for our convenience, even though it is duplicate information (given the shell_point)
+    
+    note: poly_order=4 is very high quality. decrease to 2 or 3 for polynomials that are not as good at approximating, but much faster
     """
     
     #taylor polys like to live in f(x,y) -> z
@@ -116,7 +119,7 @@ def make_scale(principal_ray, shell_point, screen_point, light_radius, angle_vec
     x = points[:, 0]
     y = points[:, 1]
     z = points[:, 2]
-    coefficients = polyfit2d(x, y, z, order=10)
+    coefficients = polyfit2d(x, y, z, order=poly_order)
     order = int(numpy.sqrt(len(coefficients)))
     cohef = []
     for i in range(0, order):
@@ -159,9 +162,9 @@ def calculate_error(scale, reference_scale):
     #print num_hits
     return average_error
 
-def _get_scale_and_error_at_distance(distance, angle_normal, reference_scales, principal_ray, screen_point, light_radius, angle_vec):
+def _get_scale_and_error_at_distance(distance, angle_normal, reference_scales, principal_ray, screen_point, light_radius, angle_vec, poly_order):
     shell_point = distance * angle_normal
-    scale = make_scale(principal_ray, shell_point, screen_point, light_radius, angle_vec)
+    scale = make_scale(principal_ray, shell_point, screen_point, light_radius, angle_vec, poly_order)
     error = max([calculate_error(scale, reference_scale) for reference_scale in reference_scales])
     scale.shell_distance_error = error
     return scale, error
@@ -170,8 +173,12 @@ def find_scale_and_error_at_best_distance(reference_scales, principal_ray, scree
     """
     iteratively find the best distance that this scale can be away from the reference scales
     """
+    
+    start_time = time.time()
+    
     #seems pretty arbitrary, but honestly at that point the gains here are pretty marginal
     num_iterations = 14
+    poly_order = optics.globals.POLY_ORDER
     if optics.globals.LOW_QUALITY_MODE:
         num_iterations = 8
     angle_normal = angle_vector_to_vector(angle_vec, principal_ray)
@@ -182,11 +189,14 @@ def find_scale_and_error_at_best_distance(reference_scales, principal_ray, scree
     
     scales = {}
     def f(x):
-        scale, error = _get_scale_and_error_at_distance(x, angle_normal, reference_scales, principal_ray, screen_point, light_radius, angle_vec)
+        scale, error = _get_scale_and_error_at_distance(x, angle_normal, reference_scales, principal_ray, screen_point, light_radius, angle_vec, poly_order)
         scales[x] = (scale, error)
         return error
     #best_value, best_error, err, num_calls = scipy.optimize.fminbound(f, lower_bound_dist, upper_bound_dist, maxfun=num_iterations, xtol=0.001, full_output=True, disp=0)
     best_value = scipy.optimize.fminbound(f, lower_bound_dist, upper_bound_dist, maxfun=num_iterations, xtol=0.001, full_output=False, disp=0)
+    
+    print("Time: %s" % (time.time() - start_time))
+    
     return scales[best_value]
     
 def explore_direction(optimization_normal, lower_bound, upper_bound, num_iterations, prev_scale, principal_ray, light_radius, angle_vec):
@@ -250,7 +260,7 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, princip
     max_spacing = (float(total_vertical_resolution) / float(total_phi_steps)) * max_pixel_spot_size
     
     #create the first scale
-    center_scale = make_scale(principal_ray, initial_shell_point, initial_screen_point, light_radius, AngleVector(0.0, 0.0))
+    center_scale = make_scale(principal_ray, initial_shell_point, initial_screen_point, light_radius, AngleVector(0.0, 0.0), optics.globals.POLY_ORDER)
     center_scale.shell_distance_error = 0.0
     scales = [center_scale]
     
@@ -290,51 +300,51 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, princip
     #        error_values[i][j] = error
     #plot_error(plot_x, plot_y, error_values)
     
-    ##ok, new approach to actually optimizing the next shell:
-    ##simply walk along the direction orthogonal to the last pixel -> shell vector in the current plane
-    ##and find the location with the minimal error
-    #
-    #lower_bound = 0.0
-    ##NOTE: is a hack / guestimate
-    #upper_bound = 2.0 * light_radius
-    #num_iterations = 16
-    #if optics.globals.LOW_QUALITY_MODE:
-    #    num_iterations = 8
-    #    
-    #phi_step = 0.05
-    #final_phi = fov/2.0
-    #
-    #for direction in (1.0, -1.0):
-    #    phi = 0.0
-    #    prev_scale = center_scale
-    #    while phi < final_phi:
-    #        phi += phi_step
-    #        theta = math.pi / 2.0
-    #        if direction < 0:
-    #            theta = 3.0 * math.pi / 2.0
-    #        angle_vec = AngleVector(theta, phi)
-    #        #TODO: obviously this has to change in the general case
-    #        optimization_normal = direction * numpy.cross(Point3D(1.0, 0.0, 0.0), normalize(prev_scale.shell_point - prev_scale.pixel_point))
-    #        scale, error = optimize_scale_for_angle(optimization_normal, lower_bound, upper_bound, num_iterations, prev_scale, principal_ray, light_radius, angle_vec)
-    #        scales.append(scale)
-    #        prev_scale = scale
-    #        
-    ##print out a little graph of the errors of the scales so we can get a sense
-    ##NOTE: this shuffling is just so that the errors are printed in an intuitive order
-    #num_scales = len(scales)
-    #num_scales_in_arc = (num_scales - 1) / 2
-    #lower_arc = scales[num_scales_in_arc+1:]
-    #lower_arc.reverse()
-    #ordered_scales = lower_arc + scales[:num_scales_in_arc+1]
-    #print("theta  phi     error")
-    #for scale in ordered_scales:
-    #    print("%.2f %.2f    %.5f" % (scale.angle_vec.theta, scale.angle_vec.phi, scale.shell_distance_error))
-    #    
-    ##export all of the scales as one massive STL
-    #merged_mesh = mesh.merge_meshes(ordered_scales)
-    #mesh.Mesh(mesh=merged_mesh).export("all_scales.stl")
-    #
-    ##export the shape formed by the screen pixels as an STL
-    #create_screen_mesh(ordered_scales).export("screen.stl")
+    #ok, new approach to actually optimizing the next shell:
+    #simply walk along the direction orthogonal to the last pixel -> shell vector in the current plane
+    #and find the location with the minimal error
+    
+    lower_bound = 0.0
+    #NOTE: is a hack / guestimate
+    upper_bound = 2.0 * light_radius
+    num_iterations = 16
+    if optics.globals.LOW_QUALITY_MODE:
+        num_iterations = 8
+        
+    phi_step = 0.05
+    final_phi = 0.04#fov/2.0
+    
+    for direction in (1.0, -1.0):
+        phi = 0.0
+        prev_scale = center_scale
+        while phi < final_phi:
+            phi += phi_step
+            theta = math.pi / 2.0
+            if direction < 0:
+                theta = 3.0 * math.pi / 2.0
+            angle_vec = AngleVector(theta, phi)
+            #TODO: obviously this has to change in the general case
+            optimization_normal = direction * numpy.cross(Point3D(1.0, 0.0, 0.0), normalize(prev_scale.shell_point - prev_scale.pixel_point))
+            scale, error = optimize_scale_for_angle(optimization_normal, lower_bound, upper_bound, num_iterations, prev_scale, principal_ray, light_radius, angle_vec)
+            scales.append(scale)
+            prev_scale = scale
+            
+    #print out a little graph of the errors of the scales so we can get a sense
+    #NOTE: this shuffling is just so that the errors are printed in an intuitive order
+    num_scales = len(scales)
+    num_scales_in_arc = (num_scales - 1) / 2
+    lower_arc = scales[num_scales_in_arc+1:]
+    lower_arc.reverse()
+    ordered_scales = lower_arc + scales[:num_scales_in_arc+1]
+    print("theta  phi     error")
+    for scale in ordered_scales:
+        print("%.2f %.2f    %.5f" % (scale.angle_vec.theta, scale.angle_vec.phi, scale.shell_distance_error))
+        
+    #export all of the scales as one massive STL
+    merged_mesh = mesh.merge_meshes(ordered_scales)
+    mesh.Mesh(mesh=merged_mesh).export("all_scales.stl")
+    
+    #export the shape formed by the screen pixels as an STL
+    create_screen_mesh(ordered_scales).export("screen.stl")
     
     return scales
