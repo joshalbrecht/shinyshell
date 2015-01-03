@@ -17,6 +17,7 @@ middle mouse roll to zoom
 
 import math
 import sys
+import itertools
 from time import time, sleep
 
 from OpenGL import GL, GLU
@@ -33,6 +34,9 @@ from mpl_toolkits.mplot3d import axes3d, Axes3D #<-- Note the capitalization!
 import rotation_matrix
 from optics import Point3D, _normalize, _normalized_vector_angle, _get_arc_plane_normal, angle_vector_to_vector, AngleVector, distToSegment, closestPointOnLine
 import mesh
+
+import pyximport; pyximport.install()
+import hacks.taylor_poly
 
 #TODO: use the pyglet codes here instead
 LEFT_MOUSE_BUTTON_CODE = 1L
@@ -540,6 +544,9 @@ class Scale(mesh.Mesh):
                 delta = Point3D(0, y, 0)
                 infinite_rays.append(Ray(base_eye_ray.start + delta, base_eye_ray.end+delta))
         
+        #TEMP: just want to see how close we're getting to the correct pixel location:
+        screen_plane = Plane(self._pixel_point, _normalize(self.shell_point - self.pixel_point))
+        
         reflection_length = 1.1 * numpy.linalg.norm(self.shell_point - self.pixel_point)
         self._rays = []
         for ray in infinite_rays:
@@ -549,20 +556,90 @@ class Scale(mesh.Mesh):
                 reverse_ray_direction = _normalize(ray.start - ray.end)
                 midpoint = closestPointOnLine(reverse_ray_direction, Point3D(0.0, 0.0, 0.0), normal)
                 reflection_direction = (2.0 * (midpoint - reverse_ray_direction)) + reverse_ray_direction
-                self._rays.append(LightRay(intersection, intersection + reflection_length * reflection_direction))
+                ray_to_screen = LightRay(intersection, intersection + reflection_length * reflection_direction)
+                self._rays.append(ray_to_screen)
+                
+                plane_intersection = screen_plane.intersect_line(ray_to_screen.start, ray_to_screen.end)
+                print numpy.linalg.norm(plane_intersection - self._pixel_point)
+                
+class PolyScale(Scale):
+    def __init__(self,  poly=None,
+                        world_to_local_rotation=None,
+                        local_to_world_rotation=None,
+                        world_to_local_translation=None,
+                        domain_cylinder_point=None,
+                        domain_cylinder_radius=None,
+                        **kwargs):
+        Scale.__init__(self, **kwargs)
+        self._poly = poly
+        self._world_to_local_rotation = world_to_local_rotation
+        self._local_to_world_rotation = local_to_world_rotation
+        self._world_to_local_translation = world_to_local_translation
+        self._local_to_world_translation = -1.0 * world_to_local_translation
+        self._domain_cylinder_point = domain_cylinder_point
+        self._domain_cylinder_radius = domain_cylinder_radius
+        
+    def render(self):
+        if self._mesh == None:
+            self.set_mesh(self._create_mesh())
+        Scale.render(self)
+        
+    def _local_to_world(self, p):
+        return self._local_to_world_rotation.dot(p) + self._local_to_world_translation
+        
+    def _world_to_local(self, p):
+        return self._world_to_local_rotation.dot(p + self._world_to_local_translation)
+    
+    def _create_mesh(self):
+        """
+        Just makes an approximate mesh. For rendering mostly.
+        """
+        #TODO: probably more robust to find the min and max in each direction (for x and y) before we are out of domain
+        #for now we just assume that you're probably not going to go beyond 2.0 * light radius in either direction
+        #make arcs along each of the possible x values
+        multiplier = 2.0
+        step = 0.5
+        arcs = []
+        for x in numpy.arange(-multiplier * self._domain_cylinder_radius, multiplier * self._domain_cylinder_radius, step):
+            arc = []
+            for y in numpy.arange(-multiplier * self._domain_cylinder_radius, multiplier * self._domain_cylinder_radius, step):
+                z = self._poly.eval_poly(x, y)
+                point = self._local_to_world(Point3D(x, y, z))
+                arc.append(point)
+            arcs.append(arc)
+        
+        #TODO: rename the mesh module. it's too generic of a name
+        #make a mesh from those arcs
+        base_mesh = mesh.mesh_from_arcs(arcs)
+        
+        #trim the mesh given our domain cylinder
+        trimmed_mesh = mesh.trim_mesh_with_cone(base_mesh, Point3D(0.0, 0.0, 0.0), self._domain_cylinder_point, self._domain_cylinder_radius)
+        
+        return trimmed_mesh
 
+    #TODO: make another function that only returns the intersection (for efficiency, since this is in the critical path)
+    def intersection_plus_normal(self, start, end):
+        """
+        Really the entire reason we switch to taylor poly instead. much better intersections hopefully...
+        """
+        #translate start and end into local coordinates
+        #use the cython collision function to figure out where we collided
+        #caculate the normal as well
+        return None, None
+    
 def create_arc(principal_ray, shell_point, screen_point, light_radius, angle_vec, is_horizontal=None):
     assert is_horizontal != None, "Must pass this parameter"
-    
-    ##HACK: just seeing what happens if I do this:
-    #shell_to_screen_vec = screen_point - shell_point
-    #screen_point = 20.0 * shell_to_screen_vec + shell_point
     
     #define a vector field for the surface normals of the shell.
     #They are completely constrained given the location of the pixel and the fact
     #that the reflecting ray must be at a particular angle        
     arc_plane_normal = _get_arc_plane_normal(principal_ray, is_horizontal)
     desired_light_direction_off_screen_towards_eye = -1.0 * angle_vector_to_vector(angle_vec, principal_ray)
+    return create_arc_helper(shell_point, screen_point, light_radius, arc_plane_normal, desired_light_direction_off_screen_towards_eye)
+    
+#just a continuation of the above function. allows you to pass in the normals so that this can work in taylor poly space
+def create_arc_helper(shell_point, screen_point, light_radius, arc_plane_normal, desired_light_direction_off_screen_towards_eye):
+
     def f(point, t):
         point_to_screen_vec = _normalize(screen_point - point)
         surface_normal = _normalize(point_to_screen_vec + desired_light_direction_off_screen_towards_eye)
@@ -579,7 +656,7 @@ def create_arc(principal_ray, shell_point, screen_point, light_radius, angle_vec
             #define the simple line that reflects the primary ray
             #intersect that with the max and min rays from the eye
             #check the distance between those intersections and double it or something
-        t_step = 0.01
+        t_step = 0.1
         if LOW_QUALITY_MODE:
             t_step = 0.5
         max_t = 5.0
@@ -598,20 +675,85 @@ def create_arc(principal_ray, shell_point, screen_point, light_radius, angle_vec
     other_half_arc.pop(0)
     other_half_arc.reverse()
     return other_half_arc + list(half_arc)
-    
+
+def polyfit2d(x, y, z, order=3):
+    ncols = (order + 1)**2
+    G = numpy.zeros((x.size, ncols))
+    ij = itertools.product(range(order+1), range(order+1))
+    for k, (i,j) in enumerate(ij):
+        G[:,k] = x**i * y**j
+    m, _, _, _ = numpy.linalg.lstsq(G, z)
+    return m
+
+#Note--might seem a little bizarre that we are transforming everything outside of PolyShell even though the details of its inner workings should be concealed
+#but it's for efficiency reasons--matrix multiplying a bajillion points into the correct space is going to be way slower than just
+#making them in the correct coordinate system in the first place
+#really, should probably hide create_arc inside of PolyScale, but it's used elsewhere, so leaving it out for now
 def make_scale(principal_ray, shell_point, screen_point, light_radius, angle_vec):
     """
     returns a non-trimmed scale patch based on the point (where the shell should be centered)
     angle_vec is passed in for our convenience, even though it is duplicate information (given the shell_point)
     """
+    
+    #taylor polys like to live in f(x,y) -> z
+    #so build up the transformation so that the shell -> screen vector is the z axis
+    shell_to_screen_normal = _normalize(screen_point - shell_point)
+    world_to_local_translation = -1.0 * shell_point
+    world_to_local_rotation = numpy.zeros((3, 3))
+    rotation_matrix.R_2vect(world_to_local_rotation, shell_to_screen_normal, Point3D(0.0, 0.0, 1.0))
+    local_to_world_rotation = numpy.zeros((3, 3))
+    rotation_matrix.R_2vect(local_to_world_rotation, Point3D(0.0, 0.0, 1.0), shell_to_screen_normal)
+    
+    def translate_to_local(p):
+        return world_to_local_rotation.dot(p + world_to_local_translation)
+    
+    #convert everything into local coordinates
+    desired_light_direction_off_screen_towards_eye = world_to_local_rotation.dot(-1.0 * angle_vector_to_vector(angle_vec, principal_ray))
+    h_arc_plane_normal = world_to_local_rotation.dot(_get_arc_plane_normal(principal_ray, True))
+    v_arc_plane_normal = world_to_local_rotation.dot(_get_arc_plane_normal(principal_ray, False))
+    transformed_screen_point = translate_to_local(screen_point)
+    transformed_shell_point = Point3D(0.0, 0.0, 0.0)
+    
+    #actually go calculate the points that we want to use to fit our polynomial
+    spine = create_arc_helper(transformed_shell_point, transformed_screen_point, light_radius, desired_light_direction_off_screen_towards_eye, v_arc_plane_normal)
+    ribs = []
+    for point in spine:
+        rib = create_arc_helper(point, transformed_screen_point, light_radius, desired_light_direction_off_screen_towards_eye, h_arc_plane_normal)
+        ribs.append(numpy.array(rib))
+        
+    points = numpy.vstack(ribs)
+    #fit the polynomial to the points:
+    x = points[:, 0]
+    y = points[:, 1]
+    z = points[:, 2]
+    coefficients = polyfit2d(x, y, z, order=10)
+    order = int(numpy.sqrt(len(coefficients)))
+    cohef = []
+    for i in range(0, order):
+        cohef.append(coefficients[i*order:(i+1)*order])
+    cohef = numpy.array(cohef).copy(order='C')
+    poly = hacks.taylor_poly.TaylorPoly(cohef=cohef)
+    
+    return PolyScale(
+        shell_point=shell_point,
+        pixel_point=screen_point,
+        angle_vec=angle_vec,
+        poly=poly,
+        world_to_local_rotation=world_to_local_rotation,
+        local_to_world_rotation=local_to_world_rotation,
+        world_to_local_translation=world_to_local_translation,
+        domain_cylinder_point=transformed_screen_point,
+        domain_cylinder_radius=light_radius
+    )
+
+def make_old_scale(principal_ray, shell_point, screen_point, light_radius, angle_vec):
+
     spine = create_arc(principal_ray, shell_point, screen_point, light_radius, angle_vec, is_horizontal=False)
     ribs = []
     for point in spine:
         rib = create_arc(principal_ray, point, screen_point, light_radius, angle_vec, is_horizontal=True)
-        ribs.append(rib)
+        ribs.append(numpy.array(rib))
         
-    
-    
     #TODO: replace this with original:
     return Scale(
         shell_point=shell_point,
@@ -747,10 +889,16 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, princip
     max_pixel_spot_size = 0.015
     max_spacing = (float(total_vertical_resolution) / float(total_phi_steps)) * max_pixel_spot_size
     
+    #TODO: go delete the old scale stuff if this works!!!!!
+    
     #create the first scale
-    center_scale = make_scale(principal_ray, initial_shell_point, initial_screen_point, light_radius, AngleVector(0.0, 0.0))
+    center_scale = make_old_scale(principal_ray, initial_shell_point, initial_screen_point, light_radius, AngleVector(0.0, 0.0))
     center_scale.shell_distance_error = 0.0
     scales = [center_scale]
+    
+    new_center_scale = make_scale(principal_ray, initial_shell_point, initial_screen_point, light_radius, AngleVector(0.0, 0.0))
+    new_center_scale.shell_distance_error = 0.0
+    scales.append(new_center_scale)
     
     #create another scale right above it for debugging the error function
     #shell_point = initial_shell_point + Point3D(0.0, 3.0, -1.0)

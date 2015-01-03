@@ -3,6 +3,7 @@
 # cython: profile=True
 #------------------------------------------------------------------------------
 #Note: Josh hacked this file a bit so that it would actually work with later versions of cython, etc
+#Note2: Josh modified this so that it doesn't even use (or work with) pyoptools anymore.
 # Copyright (c) 2007, Ricardo Amezquita Orozco <AUTHOR>
 # All rights reserved.
 #
@@ -24,8 +25,6 @@ from numpy import  array, asarray, arange, polyadd, polymul, polysub, polyval,\
 
 cimport numpy as np
 cimport cython
-from pyoptools.raytrace.surface.surface cimport Surface
-from pyoptools.raytrace.ray.ray cimport Ray
 
 
 def polypow(p,n):
@@ -100,7 +99,7 @@ def eval_poly(p, x,y):
         Result=Result+p[y_pow[i],x_pow[i]]*x**x_pow[i]*y**y_pow[i]
     return Result
 
-cdef class TaylorPoly(Surface):
+cdef class TaylorPoly(object):
     """Class to define surfaces described by a Taylor polynomial
 
     Description
@@ -143,8 +142,7 @@ cdef class TaylorPoly(Surface):
     #  [[ x0y.., x1y..,x2y., ...],
     cdef object cohef
 
-    def __init__(self,cohef=(0,0,0),*args, **kwargs):
-        Surface.__init__(self,*args, **kwargs)
+    def __init__(self,cohef=(0,0,0)):
         self.cohef = cohef
         #self.cohef=array(cohef)
         #self.addkey("cohef")
@@ -174,7 +172,7 @@ cdef class TaylorPoly(Surface):
         """
         return self.eval_poly(x, y)
 
-    cpdef _intersection(self, Ray A):
+    cpdef _intersection(self, start, direction):
         '''**Point of intersection between a ray and the polynomical surface**
 
         This method returns the point of intersection  between the surface
@@ -190,8 +188,8 @@ cdef class TaylorPoly(Surface):
         ## x=m_x t +b_x
         ## y=m_y t +b_y
         ## z=m_z t +b_z
-        ox,oy,oz=A.pos
-        dx,dy,dz=A.dir
+        ox,oy,oz=start
+        dx,dy,dz=direction
 
         RX=[dx,ox]
         RY=[dy,oy]
@@ -234,7 +232,7 @@ cdef class TaylorPoly(Surface):
                 i=i.real
                 pc=array((polyval(RX,i),polyval(RY,i),polyval(RZ,i)))
                 ## distancia del origen del rayo al punto de corte (al cuadrado)
-                dist_c=dot(pc-A.pos,pc-A.pos)
+                dist_c=dot(pc-start,pc-start)
                 #Buscar la distancia minima
                 if dist_c<dist:
                     ret_val=pc
@@ -269,5 +267,4 @@ cdef class TaylorPoly(Surface):
     def _repr_(self):
         '''Return an string with the representation of the taylor polynomical surface
         '''
-        return "TaylorPoly(shape="+str(self.shape)+",reflectivity="+\
-                          str(self.reflectivity)+",cohef="+str(self.cohef)+")"
+        return "TaylorPoly(cohef="+str(self.cohef)+")"

@@ -155,7 +155,14 @@ class Mesh(object):
     """
     
     def __init__(self, mesh=None):
-        assert mesh != None
+        
+        self._mesh = None
+        if mesh != None:
+            self.set_mesh(mesh)
+        
+        self._batch = None
+        
+    def set_mesh(self, mesh):
         self._mesh = mesh
         
         #smooth_loop = vtk.vtkLoopSubdivisionFilter()
@@ -176,8 +183,6 @@ class Mesh(object):
         self._caster.SetDataSet(self._mesh)
         #build a caster locator
         self._caster.BuildLocator()
-        
-        self._batch = None
     
     def export(self, filename):
         stlWriter = vtk.vtkSTLWriter()
