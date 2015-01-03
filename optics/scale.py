@@ -111,7 +111,7 @@ class PolyScale(Scale):
             points = self._poly.points()
             for p in points:
                 self._points.append(self._local_to_world(p))
-        self._points
+        return self._points
     
     def _arcs(self):
         arcs = self._poly.arcs()
