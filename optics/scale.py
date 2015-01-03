@@ -81,7 +81,6 @@ class Scale(optics.mesh.Mesh):
 class PolyScale(Scale):
     def __init__(self,  poly=None,
                         world_to_local_rotation=None,
-                        local_to_world_rotation=None,
                         world_to_local_translation=None,
                         domain_cylinder_point=None,
                         domain_cylinder_radius=None,
@@ -89,7 +88,7 @@ class PolyScale(Scale):
         Scale.__init__(self, **kwargs)
         self._poly = poly
         self._world_to_local_rotation = world_to_local_rotation
-        self._local_to_world_rotation = local_to_world_rotation
+        self._local_to_world_rotation = numpy.linalg.inv(world_to_local_rotation)
         self._world_to_local_translation = world_to_local_translation
         self._local_to_world_translation = -1.0 * world_to_local_translation
         self._domain_cylinder_point = domain_cylinder_point

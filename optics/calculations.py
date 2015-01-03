@@ -93,9 +93,6 @@ def make_scale(principal_ray, shell_point, screen_point, light_radius, angle_vec
     world_to_local_translation = -1.0 * shell_point
     world_to_local_rotation = numpy.zeros((3, 3))
     optics.rotation_matrix.R_2vect(world_to_local_rotation, z_axis_world_dir, Point3D(0.0, 0.0, 1.0))
-    #local_to_world_rotation = numpy.linalg.inv(world_to_local_rotation)
-    local_to_world_rotation = numpy.zeros((3, 3))
-    optics.rotation_matrix.R_2vect(local_to_world_rotation, Point3D(0.0, 0.0, 1.0), z_axis_world_dir)
     
     def translate_to_local(p):
         return world_to_local_rotation.dot(p + world_to_local_translation)
@@ -133,38 +130,10 @@ def make_scale(principal_ray, shell_point, screen_point, light_radius, angle_vec
         angle_vec=angle_vec,
         poly=poly,
         world_to_local_rotation=world_to_local_rotation,
-        local_to_world_rotation=local_to_world_rotation,
         world_to_local_translation=world_to_local_translation,
         domain_cylinder_radius=light_radius
     )
     return scale
-
-def make_old_scale(principal_ray, shell_point, screen_point, light_radius, angle_vec):
-
-    spine = optics.calculations.create_arc(principal_ray, shell_point, screen_point, light_radius, angle_vec, is_horizontal=False)
-    ribs = []
-    for point in spine:
-        rib = optics.calculations.create_arc(principal_ray, point, screen_point, light_radius, angle_vec, is_horizontal=True)
-        ribs.append(numpy.array(rib))
-        
-    #TODO: replace this with original:
-    return optics.scale.Scale(
-        shell_point=shell_point,
-        pixel_point=screen_point,
-        angle_vec=angle_vec,
-        mesh=optics.mesh.mesh_from_arcs(ribs)
-    )
-
-    #scale = mesh.Mesh(mesh.mesh_from_arcs(ribs))
-    ##scale.export("temp.stl")
-    #trimmed_scale = Scale(
-    #    shell_point=shell_point,
-    #    pixel_point=screen_point,
-    #    angle_vec=angle_vec,
-    #    mesh=optics.mesh.trim_mesh_with_cone(scale._mesh, Point3D(0.0, 0.0, 0.0), normalize(shell_point), light_radius)
-    #)
-    ##trimmed_scale.export("temp.stl")
-    #return trimmed_scale
     
 def calculate_error(scale, reference_scale):
     """
@@ -280,17 +249,10 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, princip
     max_pixel_spot_size = 0.015
     max_spacing = (float(total_vertical_resolution) / float(total_phi_steps)) * max_pixel_spot_size
     
-    #TODO: go delete the old scale stuff if this works!!!!!
-    
     #create the first scale
-    center_scale = make_old_scale(principal_ray, initial_shell_point, initial_screen_point, light_radius, AngleVector(0.0, 0.0))
+    center_scale = make_scale(principal_ray, initial_shell_point, initial_screen_point, light_radius, AngleVector(0.0, 0.0))
     center_scale.shell_distance_error = 0.0
-    #scales = [center_scale]
-    scales = []
-    
-    new_center_scale = make_scale(principal_ray, initial_shell_point, initial_screen_point, light_radius, AngleVector(0.0, 0.0))
-    new_center_scale.shell_distance_error = 0.0
-    scales.append(new_center_scale)
+    scales = [center_scale]
     
     #create another scale right above it for debugging the error function
     #shell_point = initial_shell_point + Point3D(0.0, 3.0, -1.0)
