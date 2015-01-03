@@ -613,7 +613,7 @@ class PolyScale(Scale):
         base_mesh = mesh.mesh_from_arcs(arcs)
         
         #trim the mesh given our domain cylinder
-        trimmed_mesh = mesh.trim_mesh_with_cone(base_mesh, self._local_to_world(Point3D(0.0, 0.0, 0.0)), self._local_to_world(self._domain_cylinder_point), self._domain_cylinder_radius)
+        trimmed_mesh = mesh.trim_mesh_with_cone(base_mesh, Point3D(0.0, 0.0, 0.0), _normalize(self._shell_point), self._domain_cylinder_radius)
         
         return trimmed_mesh
 
@@ -746,7 +746,6 @@ def make_scale(principal_ray, shell_point, screen_point, light_radius, angle_vec
         world_to_local_rotation=world_to_local_rotation,
         local_to_world_rotation=local_to_world_rotation,
         world_to_local_translation=world_to_local_translation,
-        domain_cylinder_point=transformed_screen_point,
         domain_cylinder_radius=light_radius
     )
     return scale
