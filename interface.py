@@ -536,7 +536,7 @@ class Scale(mesh.Mesh):
             
     def _calculate_rays(self):
         infinite_rays = []
-        base_eye_ray = Ray(Point3D(0,0,0), 100.0 * self._shell_point)
+        base_eye_ray = Ray(Point3D(0,0,0), 1.2 * self._shell_point)
         if self._num_rays == 1:
             infinite_rays.append(base_eye_ray)
         else:
@@ -550,7 +550,8 @@ class Scale(mesh.Mesh):
         reflection_length = 1.1 * numpy.linalg.norm(self.shell_point - self.pixel_point)
         self._rays = []
         for ray in infinite_rays:
-            intersection, normal = self.intersection_plus_normal(ray.start, ray.end)
+            intersection, normal = self.intersection_plus_normal(ray.end, ray.start)
+            normal *= -1.0
             if intersection != None:
                 self._rays.append(LightRay(ray.start, intersection))
                 reverse_ray_direction = _normalize(ray.start - ray.end)
@@ -662,7 +663,7 @@ def create_arc_helper(shell_point, screen_point, light_radius, arc_plane_normal,
             #define the simple line that reflects the primary ray
             #intersect that with the max and min rays from the eye
             #check the distance between those intersections and double it or something
-        t_step = 0.1
+        t_step = 0.05
         if LOW_QUALITY_MODE:
             t_step = 0.5
         max_t = 5.0
@@ -736,7 +737,7 @@ def make_scale(principal_ray, shell_point, screen_point, light_radius, angle_vec
     x = points[:, 0]
     y = points[:, 1]
     z = points[:, 2]
-    coefficients = polyfit2d(x, y, z, order=2)
+    coefficients = polyfit2d(x, y, z, order=10)
     order = int(numpy.sqrt(len(coefficients)))
     cohef = []
     for i in range(0, order):
