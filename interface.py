@@ -617,15 +617,21 @@ class PolyScale(Scale):
         
         return trimmed_mesh
 
+    #TODO: filter out things that do not collide within our domain
     #TODO: make another function that only returns the intersection (for efficiency, since this is in the critical path)
     def intersection_plus_normal(self, start, end):
         """
         Really the entire reason we switch to taylor poly instead. much better intersections hopefully...
         """
         #translate start and end into local coordinates
+        transformed_start = self._world_to_local(start)
+        transformed_end = self._world_to_local(end)
         #use the cython collision function to figure out where we collided
-        #caculate the normal as well
-        return None, None
+        #TODO: unsure if we actually need to normalize...
+        point = self._poly._intersection(transformed_start, _normalize(transformed_end-transformed_start))
+        #calculate the normal as well
+        normal = -1.0 * self._poly.normal(point)
+        return self._local_to_world(point), self._local_to_world_rotation.dot(normal)
     
 def create_arc(principal_ray, shell_point, screen_point, light_radius, angle_vec, is_horizontal=None):
     assert is_horizontal != None, "Must pass this parameter"
@@ -898,7 +904,8 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, princip
     #create the first scale
     center_scale = make_old_scale(principal_ray, initial_shell_point, initial_screen_point, light_radius, AngleVector(0.0, 0.0))
     center_scale.shell_distance_error = 0.0
-    scales = [center_scale]
+    #scales = [center_scale]
+    scales = []
     
     new_center_scale = make_scale(principal_ray, initial_shell_point, initial_screen_point, light_radius, AngleVector(0.0, 0.0))
     new_center_scale.shell_distance_error = 0.0
