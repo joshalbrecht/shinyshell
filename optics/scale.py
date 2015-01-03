@@ -108,42 +108,20 @@ class PolyScale(Scale):
     def points(self):
         if self._points == None:
             self._points = []
-            
-            cone_point = Point3D(0.0, 0.0, 0.0)
-            cone_normal = normalize(self._shell_point)
-            cone_radius = self._domain_cylinder_radius
-
-            cone_end = cone_point + cone_normal*100.0
-            sq_radius = cone_radius*cone_radius
-            w = cone_point
-            v = cone_end
-            n = w - v
-            v_w_sq_len = dist2(v, w)
-            
-            arcs = self._arcs()
-            for arc in arcs:
-                for p in arc:
-                    delta = p - (v + (((p - v).dot(n)) / v_w_sq_len) * n)
-                    if delta.dot(delta) < sq_radius:
-                        self._points.append(p)
-                
-        return self._points
+            points = self._poly.points()
+            for p in points:
+                self._points.append(self._local_to_world(p))
+        self._points
     
     def _arcs(self):
-        #TODO: probably more robust to find the min and max in each direction (for x and y) before we are out of domain
-        #for now we just assume that you're probably not going to go beyond 2.0 * light radius in either direction
-        #make arcs along each of the possible x values
-        multiplier = 2.0
-        step = 0.5
-        arcs = []
-        for x in numpy.arange(-multiplier * self._domain_cylinder_radius, multiplier * self._domain_cylinder_radius, step):
-            arc = []
-            for y in numpy.arange(-multiplier * self._domain_cylinder_radius, multiplier * self._domain_cylinder_radius, step):
-                z = self._poly.eval_poly(x, y)
-                point = self._local_to_world(Point3D(x, y, z))
-                arc.append(point)
-            arcs.append(arc)
-        return arcs
+        arcs = self._poly.arcs()
+        new_arcs = []
+        for arc in arcs:
+            new_arc = []
+            for p in arc:
+                new_arc.append(self._local_to_world(p))
+            new_arcs.append(new_arc)
+        return new_arcs
     
     def _create_mesh(self):
         """

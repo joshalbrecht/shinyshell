@@ -148,6 +148,8 @@ cdef class TaylorPoly(object):
     cdef object domain_radius
     cdef object domain_point
     cdef object domain_sq_radius
+    cdef object _points
+    cdef object bounding_radius_sq
 
     def __init__(self,cohef=(0,0,0), domain_radius=None, domain_point=None):
         self.cohef = cohef
@@ -156,11 +158,38 @@ cdef class TaylorPoly(object):
         self.domain_radius = domain_radius
         self.domain_point = normalize(domain_point)
         self.domain_sq_radius = domain_radius * domain_radius
+        self._points = []
+        arcs = self.arcs()
+        farthest_sq_dist = 0.0
+        for arc in arcs:
+            for p in arc:
+                if self.in_domain(p):
+                    self._points.append(p)
+                    dist_sq = p.dot(p)
+                    if dist_sq > farthest_sq_dist:
+                        farthest_sq_dist = dist_sq
+        self.bounding_radius_sq = farthest_sq_dist
         
     cpdef in_domain(self, p):
         n = self.domain_point
         delta = p - (p.dot(n) * n)
         return delta.dot(delta) < self.domain_sq_radius
+        
+    cpdef arcs(self, multiplier=2.0, step=0.5):
+        #TODO: probably more robust to find the min and max in each direction (for x and y) before we are out of domain
+        #for now we just assume that you're probably not going to go beyond 2.0 * light radius in either direction
+        #make arcs along each of the possible x values
+        arcs = []
+        for x in numpy.arange(-multiplier * self.domain_radius, multiplier * self.domain_radius, step):
+            arc = []
+            for y in numpy.arange(-multiplier * self.domain_radius, multiplier * self.domain_radius, step):
+                z = self.eval_poly(x, y)
+                arc.append(Point3D(x,y,z))
+            arcs.append(arc)
+        return arcs
+        
+    cpdef points(self):
+        return self._points    
 
     #~ def __reduce__(self):
         #~
@@ -197,6 +226,9 @@ cdef class TaylorPoly(object):
         start and direction must be in the coordinate system of the surface
         '''
         
+        #quick initial filter--does this even pass through our bounding sphere?
+        if distToLineSquared(Point3D(0.0, 0.0, 0.0), start, start+direction) > self.bounding_radius_sq:
+            return None
 
         ## Polynomial parametric equations describing the beam
         ## x=m_x t +b_x
