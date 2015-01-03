@@ -7,4 +7,4 @@ Just a bunch of constants that define the behavior of the script.
 LOW_QUALITY_MODE = True
 
 #what order for taylor poly approximations. higher is better quality but slower
-POLY_ORDER = 3
+POLY_ORDER = 2

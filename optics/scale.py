@@ -95,9 +95,12 @@ class PolyScale(Scale):
         self._points = None
         
     def render(self):
+        self.ensure_mesh()
+        Scale.render(self)
+        
+    def ensure_mesh(self):
         if self._mesh == None:
             self.set_mesh(self._create_mesh())
-        Scale.render(self)
         
     def _local_to_world(self, p):
         return self._local_to_world_rotation.dot(p) + self._local_to_world_translation

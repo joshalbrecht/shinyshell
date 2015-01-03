@@ -342,6 +342,7 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, princip
     ordered_scales = lower_arc + scales[:num_scales_in_arc+1]
     print("theta  phi     error")
     for scale in ordered_scales:
+        scale.ensure_mesh()
         print("%.2f %.2f    %.5f" % (scale.angle_vec.theta, scale.angle_vec.phi, scale.shell_distance_error))
         
     #export all of the scales as one massive STL
