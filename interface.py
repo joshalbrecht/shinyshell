@@ -701,6 +701,7 @@ def make_scale(principal_ray, shell_point, screen_point, light_radius, angle_vec
     world_to_local_translation = -1.0 * shell_point
     world_to_local_rotation = numpy.zeros((3, 3))
     rotation_matrix.R_2vect(world_to_local_rotation, shell_to_screen_normal, Point3D(0.0, 0.0, 1.0))
+    #local_to_world_rotation = numpy.linalg.inv(world_to_local_rotation)
     local_to_world_rotation = numpy.zeros((3, 3))
     rotation_matrix.R_2vect(local_to_world_rotation, Point3D(0.0, 0.0, 1.0), shell_to_screen_normal)
     
@@ -726,15 +727,15 @@ def make_scale(principal_ray, shell_point, screen_point, light_radius, angle_vec
     x = points[:, 0]
     y = points[:, 1]
     z = points[:, 2]
-    coefficients = polyfit2d(x, y, z, order=10)
+    coefficients = polyfit2d(x, y, z, order=2)
     order = int(numpy.sqrt(len(coefficients)))
     cohef = []
     for i in range(0, order):
         cohef.append(coefficients[i*order:(i+1)*order])
     cohef = numpy.array(cohef).copy(order='C')
-    poly = hacks.taylor_poly.TaylorPoly(cohef=cohef)
+    poly = hacks.taylor_poly.TaylorPoly(cohef=cohef.T)
     
-    return PolyScale(
+    scale = PolyScale(
         shell_point=shell_point,
         pixel_point=screen_point,
         angle_vec=angle_vec,
@@ -745,6 +746,7 @@ def make_scale(principal_ray, shell_point, screen_point, light_radius, angle_vec
         domain_cylinder_point=transformed_screen_point,
         domain_cylinder_radius=light_radius
     )
+    return scale
 
 def make_old_scale(principal_ray, shell_point, screen_point, light_radius, angle_vec):
 
