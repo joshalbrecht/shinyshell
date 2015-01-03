@@ -32,7 +32,8 @@ def main():
     initial_shell_point = Point3D(0.0, 0.0, -60.0)
     initial_screen_point = Point3D(0.0, 40.0, -20.0)
     principal_ray = Point3D(0.0, 0.0, -1.0)
-    win.scales = optics.calculations.create_surface_via_scales(initial_shell_point, initial_screen_point, principal_ray)
+    optimization_normal = normalize(Point3D(0.0, 1.0, -1.0))
+    win.scales = optics.calculations.create_surface_via_scales(initial_shell_point, initial_screen_point, optimization_normal, principal_ray)
     win.run()
 
 if __name__ == '__main__':

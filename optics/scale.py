@@ -59,8 +59,10 @@ class Scale(optics.mesh.Mesh):
                 delta = Point3D(0, y, 0)
                 infinite_rays.append(Ray(base_eye_ray.start + delta, base_eye_ray.end+delta))
         
-        #TEMP: just want to see how close we're getting to the correct pixel location:
+        #just want to see how close we're getting to the correct pixel location:
         screen_plane = Plane(self._pixel_point, normalize(self.shell_point - self.pixel_point))
+        distance_from_center = 0.0
+        num_collisions = 0
         
         reflection_length = 1.1 * numpy.linalg.norm(self.shell_point - self.pixel_point)
         self._rays = []
@@ -75,7 +77,9 @@ class Scale(optics.mesh.Mesh):
                 self._rays.append(ray_to_screen)
                 
                 plane_intersection = screen_plane.intersect_line(ray_to_screen.start, ray_to_screen.end)
-                print numpy.linalg.norm(plane_intersection - self._pixel_point)
+                distance_from_center += numpy.linalg.norm(plane_intersection - self._pixel_point)
+                num_collisions += 1
+        self.focal_error = distance_from_center / num_collisions
                 
 class PolyScale(Scale):
     def __init__(self,  poly=None,
