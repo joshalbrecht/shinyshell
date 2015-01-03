@@ -134,11 +134,11 @@ from pyoptools.misc import cmisc
 from pyoptools.misc import pmisc
 import scipy.integrate
 
-import rotation_matrix
-import mesh
-from meshsurface import MeshSurface
-
-from optics import Point3D, Point2D, _normalize, _normalized_vector_angle, _get_arc_plane_normal, angle_vector_to_vector, AngleVector, create_transform_matrix_from_rotations
+from optics.base import Point3D, Point2D, normalize, normalized_vector_angle, get_arc_plane_normal, angle_vector_to_vector, AngleVector, create_transform_matrix_from_rotations
+import optics.globals
+import optics.rotation_matrix
+import optics.mesh
+from optics.meshsurface import MeshSurface
 
 FOCAL_LENGTH = 24.0
 PUPIL = 4
@@ -336,9 +336,9 @@ def _get_theta_from_point(principal_ray, h_arc_normal, v_arc_normal, point):
         return 0.0
     normalized_point = projected_point / length
     #measure angle between normalized projection and v_arc_normal
-    theta = _normalized_vector_angle(normalized_point, v_arc_normal)
+    theta = normalized_vector_angle(normalized_point, v_arc_normal)
     #if angle between normalized projection and h_arc_normal is > pi / 2.0, subtract angle from 2.0 * pi
-    if _normalized_vector_angle(normalized_point, h_arc_normal) > math.pi / 2.0:
+    if normalized_vector_angle(normalized_point, h_arc_normal) > math.pi / 2.0:
         theta = math.pi * 2.0 - theta
     return theta
 
@@ -352,8 +352,8 @@ def create_new_arc(screen, principal_ray, point0, is_horizontal=None):
     """
     
     assert is_horizontal != None
-    h_arc_normal = _get_arc_plane_normal(principal_ray, True)
-    v_arc_normal = _get_arc_plane_normal(principal_ray, False)
+    h_arc_normal = get_arc_plane_normal(principal_ray, True)
+    v_arc_normal = get_arc_plane_normal(principal_ray, False)
     
     def get_center(x, x_min, x_max, x_step):
         centers = numpy.arange(x_min, x_max, x_step)
@@ -380,28 +380,28 @@ def create_new_arc(screen, principal_ray, point0, is_horizontal=None):
     #this function defines the derivative of the surface at any given point.
     #simply the intersection of the arc plane and the required surface plane at that point
     #if there is no way to bounce to the front of the screen, the derivative is just 0
-    arc_plane_normal = _get_arc_plane_normal(principal_ray, is_horizontal)
+    arc_plane_normal = get_arc_plane_normal(principal_ray, is_horizontal)
     def f(point, t):
         #TODO: return [0,0,0] if the point is not in front of the screen (since it would not be visible at all, we should stop tracing this surface)
 
         # This section creates surface such that a ray from center of the eye hits the correct pixel on the screen
-        eye_to_point_vec = _normalize(point)
-        phi = _normalized_vector_angle(principal_ray, eye_to_point_vec)
+        eye_to_point_vec = normalize(point)
+        phi = normalized_vector_angle(principal_ray, eye_to_point_vec)
         theta = _get_theta_from_point(principal_ray, h_arc_normal, v_arc_normal, point)
 
         # This section creates surface such that a cone of rays coming from a pixel on the screen is reflected in parallel rays toward the eye
         # Assumes that screen is tilted at correct angle such that ray coming from eye center hits screen at perpendicular angle
-#        eye_to_point_vec = _normalize(point)
-#        phi = _normalized_vector_angle(principal_ray, eye_to_point_vec)
+#        eye_to_point_vec = normalize(point)
+#        phi = normalized_vector_angle(principal_ray, eye_to_point_vec)
 #        theta = _get_theta_from_point(principal_ray, h_arc_normal, v_arc_normal, point)
 #        phi, theta = find_center_given_phi_theta(phi, theta)
 #        eye_to_point_vec = angle_vector_to_vector(AngleVector(theta, phi), principal_ray)
         
         pixel_point = screen.vision_ray_to_pixel(AngleVector(theta, phi))
         point_to_eye_vec = eye_to_point_vec * -1
-        point_to_screen_vec = _normalize(pixel_point - point)
-        surface_normal = _normalize((point_to_screen_vec + point_to_eye_vec) / 2.0)
-        derivative = _normalize(numpy.cross(surface_normal, arc_plane_normal))
+        point_to_screen_vec = normalize(pixel_point - point)
+        surface_normal = normalize((point_to_screen_vec + point_to_eye_vec) / 2.0)
+        derivative = normalize(numpy.cross(surface_normal, arc_plane_normal))
         return derivative
 
     #the set of t values for which we would like to have output.
@@ -441,12 +441,12 @@ def broken_create_arc(screen, principal_ray, shell_point, is_horizontal=True):
     #define a vector field for the surface normals of the shell.
     #They are completely constrained given the location of the pixel and the fact
     #that the reflecting ray must be at a particular angle        
-    arc_plane_normal = _get_arc_plane_normal(principal_ray, is_horizontal)
+    arc_plane_normal = get_arc_plane_normal(principal_ray, is_horizontal)
     desired_light_direction_off_screen_towards_eye = -1.0 * angle_vector_to_vector(angle_vec, principal_ray)
     def f(point, t):
-        point_to_screen_vec = _normalize(screen_point - point)
-        surface_normal = _normalize(point_to_screen_vec + desired_light_direction_off_screen_towards_eye)
-        derivative = _normalize(numpy.cross(surface_normal, arc_plane_normal))
+        point_to_screen_vec = normalize(screen_point - point)
+        surface_normal = normalize(point_to_screen_vec + desired_light_direction_off_screen_towards_eye)
+        derivative = normalize(numpy.cross(surface_normal, arc_plane_normal))
         return derivative
     
     #TODO: this should really be based on light_radius...
@@ -460,7 +460,7 @@ def broken_create_arc(screen, principal_ray, shell_point, is_horizontal=True):
             #intersect that with the max and min rays from the eye
             #check the distance between those intersections and double it or something
         t_step = 0.5
-        #if LOW_QUALITY_MODE:
+        #if optics.globals.LOW_QUALITY_MODE:
         #    t_step = 0.5
         max_t = 5.0
         return numpy.arange(0.0, max_t, t_step)
@@ -623,8 +623,8 @@ def create_new_arc_2d(screen, principal_ray, point0, is_horizontal=None):
     """
     
     assert is_horizontal != None
-    h_arc_normal = _get_arc_plane_normal(principal_ray, True)
-    v_arc_normal = _get_arc_plane_normal(principal_ray, False)
+    h_arc_normal = get_arc_plane_normal(principal_ray, True)
+    v_arc_normal = get_arc_plane_normal(principal_ray, False)
 
     def get_center(x, x_min, x_max, x_step):
         centers = numpy.arange(x_min, x_max, x_step)
@@ -653,21 +653,21 @@ def create_new_arc_2d(screen, principal_ray, point0, is_horizontal=None):
     #this function defines the derivative of the surface at any given point.
     #simply the intersection of the arc plane and the required surface plane at that point
     #if there is no way to bounce to the front of the screen, the derivative is just 0
-    arc_plane_normal = _get_arc_plane_normal(principal_ray, is_horizontal)
+    arc_plane_normal = get_arc_plane_normal(principal_ray, is_horizontal)
     def f(point, t):
         # This section creates surface such that a ray from center of the eye hits the correct pixel on the screen
 #        eye_to_point_vec = Point3D(0, 0, -1)
-        eye_to_point_vec = _normalize(point)
-        phi = _normalized_vector_angle(principal_ray, eye_to_point_vec)
+        eye_to_point_vec = normalize(point)
+        phi = normalized_vector_angle(principal_ray, eye_to_point_vec)
         theta = _get_theta_from_point(principal_ray, h_arc_normal, v_arc_normal, point)
         bucketed_phi, bucketed_theta = find_center_given_phi_theta(phi, theta)
         eye_to_point_vec = angle_vector_to_vector(AngleVector(bucketed_theta, bucketed_phi), principal_ray)
         
         pixel_point = screen.vision_ray_to_pixel(AngleVector(bucketed_theta, bucketed_phi))
         point_to_eye_vec = eye_to_point_vec * -1
-        point_to_screen_vec = _normalize(pixel_point - point)
-        surface_normal = _normalize((point_to_screen_vec + point_to_eye_vec) / 2.0)
-        derivative = _normalize(numpy.cross(surface_normal, arc_plane_normal))
+        point_to_screen_vec = normalize(pixel_point - point)
+        surface_normal = normalize((point_to_screen_vec + point_to_eye_vec) / 2.0)
+        derivative = normalize(numpy.cross(surface_normal, arc_plane_normal))
         return derivative
 
     #the set of t values for which we would like to have output.

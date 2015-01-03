@@ -1,4 +1,8 @@
 
+"""
+Just used by main.py to allow triangle mesh surfaces to be used in pyoptools
+"""
+
 import vtk
 
 import numpy

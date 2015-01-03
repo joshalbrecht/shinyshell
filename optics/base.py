@@ -4,9 +4,11 @@ Shared code between main.py and interface.py.
 """
 
 import math
+import collections
 
 import numpy
-from collections import namedtuple
+import OpenGL.GL
+
 import rotation_matrix
 
 #these are very simple classes. just an alias for a numpy array that gives a little more intentionality to the code
@@ -17,7 +19,7 @@ def Point3D(*args):
     return numpy.array(args)
 
 #Used for vision rays. See module docstring
-AngleVector = namedtuple('AngleVector', ['theta', 'phi'])
+AngleVector = collections.namedtuple('AngleVector', ['theta', 'phi'])
 
 class Plane(object):
     def __init__(self, point, normal):
@@ -59,8 +61,24 @@ class Ray(object):
     @property
     def end(self): 
         return self._end
+    
+class VisibleLineSegment(Ray):
+    def __init__(self, start, end, color=(1.0, 1.0, 1.0)):
+        Ray.__init__(self, start, end)
+        self._color = color
+        
+    def render(self):
+        OpenGL.GL.glBegin(OpenGL.GL.GL_LINES)
+        OpenGL.GL.glColor3f(*self._color)
+        OpenGL.GL.glVertex3f(*self._start)
+        OpenGL.GL.glVertex3f(*self._end)
+        OpenGL.GL.glEnd()
 
-def _get_arc_plane_normal(principal_ray, is_horizontal):
+class LightRay(VisibleLineSegment):
+    def __init__(self, start, end):
+        VisibleLineSegment.__init__(self, start, end, color=(0.5, 0.5, 0.5))
+
+def get_arc_plane_normal(principal_ray, is_horizontal):
     """
     Defines the normal for the arc plane (the plane in which the arc will reside)
     If the principal ray is (0,0,-1) and:
@@ -76,10 +94,10 @@ def _get_arc_plane_normal(principal_ray, is_horizontal):
         base_arc_ray = Point3D(0.0, 1.0, 0.0)
     return ray_rotation.dot(base_arc_ray)
 
-def _normalize(a):
+def normalize(a):
     return a / numpy.linalg.norm(a)
 
-def _normalized_vector_angle(v1_u, v2_u):
+def normalized_vector_angle(v1_u, v2_u):
     """ Returns the angle in radians between normal vectors 'v1_u' and 'v2_u'::
 
             >>> angle_between((1, 0, 0), (0, 1, 0))

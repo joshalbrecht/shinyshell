@@ -2,6 +2,7 @@
 
 """
 Installation instructions: sudo pip install pyglet
+(actually make sure you install everything from main.py as well)
 
 This application is meant to be a complete replacement for main.py (except I'm trying to never use pyoptools)
 All assumptions and coordinates are the same as in main.py.
@@ -32,428 +33,18 @@ import pyximport; pyximport.install()
 import matplotlib.pyplot as plt
 import mpl_toolkits.mplot3d
 
-import rotation_matrix
-import optics
-#imported by name for convenience
-from optics import Point3D, _normalize, _normalized_vector_angle, _get_arc_plane_normal, angle_vector_to_vector, AngleVector, distToSegment, closestPointOnLine, Plane, Ray
-import mesh
+#this is the one thing that is allowed to import *
+from optics.base import *
+import optics.globals
+import optics.rotation_matrix
+import optics.mesh
+import optics.calculations
 import hacks.taylor_poly
+import viewer.window
 
-#enable this to speed up development. Just cuts back on a lot of precision
-LOW_QUALITY_MODE = True
-
-
-        
-class VisibleLineSegment(Ray):
-    def __init__(self, start, end, color=(1.0, 1.0, 1.0)):
-        Ray.__init__(self, start, end)
-        self._color = color
-        
-    def render(self):
-        OpenGL.GL.glBegin(OpenGL.GL.GL_LINES)
-        OpenGL.GL.glColor3f(*self._color)
-        OpenGL.GL.glVertex3f(*self._start)
-        OpenGL.GL.glVertex3f(*self._end)
-        OpenGL.GL.glEnd()
-
-class LightRay(VisibleLineSegment):
-    def __init__(self, start, end):
-        VisibleLineSegment.__init__(self, start, end, color=(0.5, 0.5, 0.5))
-
-class SceneObject(object):
-    """
-    :attr pos: the position of the object in real coordinates (mm)
-    :attr change_handler: will be called if the position changes
-    """
-    
-    scene_objects = []
-    
-    def __init__(self, pos=None, color=(1.0, 1.0, 1.0), change_handler=None, radius=1.0):
-        assert pos != None, "Must define a position for a SceneObject"
-        self._pos = pos
-        self._color = color
-        self._change_handler = change_handler
-        self.radius = radius
-        self.scene_objects.append(self)
-        
-    def on_change(self):
-        if self._change_handler:
-            self._change_handler()
-            
-    def render(self):
-        OpenGL.GL.glColor3f(*self._color)
-        
-    def distance_to_ray(self, ray):
-        """
-        :returns: the min distance between self._pos and ray
-        """
-        return distToSegment(self._pos, ray.start, ray.end)
-        
-    @property
-    def pos(self): 
-        return self._pos
-
-    @pos.setter
-    def pos(self, value): 
-        self._pos = value
-        self.on_change()
-        
-    @classmethod
-    def pick_object(cls, ray):
-        """
-        :returns: the thing that is closest to the ray, if anything was close enough for the bounding sphere to be intersected
-        :rtype: SceneObject
-        """
-        best_dist = float("inf")
-        best_obj = None
-        for obj in cls.scene_objects:
-            dist = obj.distance_to_ray(ray)
-            if dist < obj.radius:
-                if dist < best_dist:
-                    best_dist = dist
-                    best_obj = obj
-        return best_obj
-
-class ScreenPixel(SceneObject):
-    def render(self):
-        SceneObject.render(self)
-        OpenGL.GL.glBegin(OpenGL.GL.GL_POINTS)
-        OpenGL.GL.glVertex3f(*self._pos)
-        OpenGL.GL.glEnd()
-
-class ReflectiveSurface(SceneObject):
-    def __init__(self, **kwargs):
-        SceneObject.__init__(self, **kwargs)
-        self.segments = []
-        
-    def render(self):
-        SceneObject.render(self)
-        for segment in self.segments:
-            segment.render()
-        
-class ShellSection(object):
-    """
-    :attr shell: the object representing the center of the shell
-    :attr pixel: the object representing the pixel on the screen
-    :attr num_rays: the number of parallel rays emitted by the eye
-    :attr pupil_radius: 1/2 of the width of the region that emits rays from the eye
-    
-    Note that when any of those attributes are set, the object will recalculate everything based on them
-    """
-    
-    def __init__(self, shell_point, pixel_point, num_rays, pupil_radius):
-        self._shell = ReflectiveSurface(pos=shell_point, color=(1.0, 1.0, 1.0), change_handler=self._on_change)
-        self._pixel = ScreenPixel(pos=pixel_point, color=(1.0, 1.0, 1.0), change_handler=self._on_change)
-        self._num_rays = num_rays
-        self._pupil_radius = pupil_radius
-        
-        #calculated attributes
-        self._rays = []
-        
-        self._dirty = True
-        self._recalculate()
-        
-    def render(self):
-        """Draw the shell section, pixel, and rays"""
-        self._recalculate()
-        
-        self._shell.render()
-        self._pixel.render()
-        for ray in self._rays:
-            ray.render()
-            
-    def _recalculate(self):
-        """Update internal state when any of the interesting variables have changed"""
-        
-        ##note: this is just a hacky implementation right now to see if things are generally working
-        #point_to_eye = _normalize(Point3D(0,0,0) - self._shell.pos)
-        #point_to_pixel = _normalize(self._pixel.pos - self._shell.pos)
-        #surface_normal = _normalize((point_to_eye + point_to_pixel) / 2.0)
-        #tangent = Point3D(0.0, -1.0 * surface_normal[2], surface_normal[1])
-        #start = self._shell.pos + tangent
-        #end = self._shell.pos - tangent
-        #segment = VisibleLineSegment(start, end)
-        #self._shell.segments = [segment]
-        #self._rays = [LightRay(Point3D(0,0,0), self._shell.pos), LightRay(self._shell.pos, self._pixel.pos)]
-        
-        if not self._dirty:
-            return
-        self._dirty = False
-        
-        principal_ray = Point3D(0.0, 0.0, -1.0)
-        
-        #figure out the angle of the primary ray
-        phi = _normalized_vector_angle(principal_ray, _normalize(self._shell.pos))
-        if self._shell.pos[1] < 0.0:
-            theta = 3.0 * math.pi / 2.0
-        else:
-            theta = math.pi / 2.0
-        
-        shell_points = create_arc(principal_ray, self._shell.pos, self._pixel.pos, self.pupil_radius, AngleVector(theta, phi), is_horizontal=False)
-        
-        #create all of the segments
-        segments = [VisibleLineSegment(shell_points[i-1], shell_points[i]) for i in range(1, len(shell_points))]
-        
-        #create all of the inifinite rays (those going from the eye to someplace really far away, in the correct direction)
-        infinite_rays = []
-        base_eye_ray = Ray(Point3D(0,0,0), 100.0 * self._shell.pos)
-        if self._num_rays == 1:
-            infinite_rays.append(base_eye_ray)
-        else:
-            for y in numpy.linspace(-self._pupil_radius, self.pupil_radius, num=self._num_rays):
-                delta = Point3D(0, y, 0)
-                infinite_rays.append(Ray(base_eye_ray.start + delta, base_eye_ray.end+delta))
-        
-        #NOTE: we are NOT actually reflecting these rays off of the surface right now.
-        #'bounce' each ray off of the surface (eg, find the segment that it is closest to and use that as the termination)
-        #this is used to create the rays that we will draw later
-        #also remembers the earliest and latest segment index, so that we can drop everything not required for the surface
-        earliest_segment_index = sys.maxint
-        latest_segment_index = -1
-        self._rays = []
-        for ray in infinite_rays:
-            best_index = -1
-            best_sq_dist = float("inf")
-            best_loc = None
-            for i in range(0, len(segments)):
-                seg = segments[i]
-                tangent = _normalize(seg.end - seg.start)
-                #janky rotation
-                normal = Point3D(0, tangent[2], -tangent[1])
-                plane = Plane(seg.start, normal)
-                loc = plane.intersect_line(ray.start, ray.end)
-                midpoint = (seg.start + seg.end) /2.0
-                delta = midpoint - loc
-                sq_dist = delta.dot(delta)
-                if sq_dist < best_sq_dist:
-                    best_index = i
-                    best_loc = loc
-                    best_sq_dist = sq_dist
-            self._rays.append(LightRay(ray.start, best_loc))
-            self._rays.append(LightRay(best_loc, self._pixel.pos))
-            if best_index > latest_segment_index:
-                latest_segment_index = best_index
-            if best_index < earliest_segment_index:
-                earliest_segment_index = best_index
-        self._shell.segments = segments[earliest_segment_index:latest_segment_index]
-
-    @property
-    def num_rays(self): 
-        return self._num_rays
-
-    @num_rays.setter
-    def num_rays(self, value): 
-        self._num_rays = value
-        self._on_change()
-        
-    @property
-    def pupil_radius(self): 
-        return self._pupil_radius
-
-    @pupil_radius.setter
-    def pupil_radius(self, value): 
-        self._pupil_radius = value
-        self._on_change()
-        
-    def _on_change(self):
-        self._dirty = True
-    
-
-class Window(pyglet.window.Window):
-    def __init__(self, refreshrate):
-        super(Window, self).__init__(vsync = False)
-        self.frames = 0
-        self.framerate = pyglet.text.Label(text='Unknown', font_name='Verdana', font_size=8, x=10, y=10, color=(255,255,255,255))
-        self.last = time.time()
-        self.alive = 1
-        self.refreshrate = refreshrate
-        self.left_click = None
-        self.middle_click = None
-        
-        self.selection = []
-        self.zoom_multiplier = 1.2
-        self.focal_point = Point3D(0.0, 20.0, 30.0)
-        self.camera_point = Point3D(100.0, self.focal_point[1], self.focal_point[2])
-        self.up_vector = Point3D(0.0, 1.0, 0.0)
-        
-        self.num_rays = 3
-        self.pupil_radius = 2.0
-        self.sections = []
-        self.create_initial_sections()
-        
-        initial_shell_point = Point3D(0.0, 0.0, -60.0)
-        initial_screen_point = Point3D(0.0, 40.0, -20.0)
-        principal_ray = Point3D(0.0, 0.0, -1.0)
-        self.scales = create_surface_via_scales(initial_shell_point, initial_screen_point, principal_ray)
-        
-    #TODO: someday can save and load sections as well perhaps, so we can resume after shutting down
-    def create_initial_sections(self):
-        """Initialize some semi-sensible sections"""
-        self.sections = []
-        self.sections.append(ShellSection(Point3D(0.0, 10.0, -70.0), Point3D(0.0, 40.0, -20.0), self.num_rays, self.pupil_radius))
-        #self.sections.append(ShellSection(Point3D(0.0, 0.0, -60.0), Point3D(0.0, 40.0, -20.0), self.num_rays, self.pupil_radius))
-        self.sections.append(ShellSection(Point3D(0.0, -5.0, -50.0), Point3D(0.0, 40.0, -20.0), self.num_rays, self.pupil_radius))
-
-    def on_draw(self):
-        self.render()
-        
-    def on_mouse_press(self, x, y, button, modifiers):
-        if button == pyglet.window.mouse.RIGHT:
-            location = self._mouse_to_2d_plane(x, y)
-            self.sections.append(ShellSection(location, Point3D(0.0, 40.0, -20.0), self.num_rays, self.pupil_radius))
-            
-        elif button == pyglet.window.mouse.LEFT:
-            self.left_click = x,y
-        
-            ray = self._click_to_ray(x, y)
-            obj = SceneObject.pick_object(ray)
-            if obj:
-                self.selection = [obj]
-            else:
-                self.selection = []
-                
-        elif button == pyglet.window.mouse.MIDDLE:
-            self.middle_click = x,y
-
-    def on_mouse_drag(self, x, y, dx, dy, buttons, modifiers):
-        if self.left_click:
-            for obj in self.selection:
-                start_plane_location = self._mouse_to_2d_plane(x, y)
-                end_plane_location = self._mouse_to_2d_plane(x+dx, y+dy)
-                delta = end_plane_location - start_plane_location
-                obj.pos += delta
-        if self.middle_click:
-            if modifiers & pyglet.window.key.MOD_SHIFT:
-                self._rotate(dx, dy)
-            else:
-                start_plane_location = self._mouse_to_work_plane(x, y)
-                end_plane_location = self._mouse_to_work_plane(x+dx, y+dy)
-                delta = end_plane_location - start_plane_location
-                self.focal_point += -1.0 * delta
-                self.camera_point += -1.0 * delta
-                
-    def _rotate(self, dx, dy):
-        angle_step = 0.01
-        view_normal = _normalize(self.focal_point - self.camera_point)
-        side_normal = numpy.cross(view_normal, self.up_vector)
-        y_matrix = numpy.zeros((3,3))
-        y_angle = dy * angle_step
-        rotation_matrix.R_axis_angle(y_matrix, side_normal, y_angle)
-        x_matrix = numpy.zeros((3,3))
-        x_angle = -dx * angle_step
-        rotation_matrix.R_axis_angle(x_matrix, self.up_vector, x_angle)
-        matrix = x_matrix.dot(y_matrix)
-        
-        #translate up point and camera point to remove the focal_point offset, rotate them, then translate back
-        camera_point = self.camera_point - self.focal_point
-        up_point = camera_point + self.up_vector
-        self.camera_point = matrix.dot(camera_point) + self.focal_point
-        self.up_vector = _normalize((matrix.dot(up_point) + self.focal_point) - self.camera_point)
-        
-    def _mouse_to_work_plane(self, x, y):
-        ray = self._click_to_ray(x, y)
-        point = Plane(self.focal_point, _normalize(self.camera_point - self.focal_point)).intersect_line(ray.start, ray.end)
-        return point
-    
-    def _mouse_to_2d_plane(self, x, y):
-        ray = self._click_to_ray(x, y)
-        point = Plane(Point3D(0.0, 0.0, 0.0), Point3D(1.0, 0.0, 0.0)).intersect_line(ray.start, ray.end)
-        return point
-
-    def on_mouse_release(self, x, y, button, modifiers):
-        if button == pyglet.window.mouse.LEFT:
-            self.left_click = None
-        elif button == pyglet.window.mouse.MIDDLE:
-            self.middle_click = None
-            
-    def on_mouse_scroll(self, x, y, scroll_x, scroll_y):
-        distance = numpy.linalg.norm(self.camera_point - self.focal_point)
-        for i in range(0, abs(scroll_y)):
-            if scroll_y < 0:
-                distance *= self.zoom_multiplier
-            else:
-                distance *= 1.0 / self.zoom_multiplier
-        self.camera_point = self.focal_point + distance * _normalize(self.camera_point - self.focal_point)
-        
-    def _click_to_ray(self, x, y):
-        model = OpenGL.GL.glGetDoublev(OpenGL.GL.GL_MODELVIEW_MATRIX)
-        proj = OpenGL.GL.glGetDoublev(OpenGL.GL.GL_PROJECTION_MATRIX)
-        view = OpenGL.GL.glGetIntegerv(OpenGL.GL.GL_VIEWPORT)
-        start = Point3D(*OpenGL.GLU.gluUnProject(x, y, 0.0, model=model, proj=proj, view=view))
-        end = Point3D(*OpenGL.GLU.gluUnProject(x, y, 1.0, model=model, proj=proj, view=view))
-        return Ray(start, end)
-
-    def _draw_axis(self):
-        axis_len = 10.0
-        
-        OpenGL.GL.glBegin(OpenGL.GL.GL_LINES)
-        
-        OpenGL.GL.glColor3f(1.0, 0.0, 0.0)
-        OpenGL.GL.glVertex3f(0.0, 0.0, 0.0)
-        OpenGL.GL.glVertex3f(axis_len, 0.0, 0.0)
-        
-        OpenGL.GL.glColor3f(0.0, 1.0, 0.0)
-        OpenGL.GL.glVertex3f(0.0, 0.0, 0.0)
-        OpenGL.GL.glVertex3f(0.0, axis_len, 0.0)
-        
-        OpenGL.GL.glColor3f(0.0, 0.0, 1.0)
-        OpenGL.GL.glVertex3f(0.0, 0.0, 0.0)
-        OpenGL.GL.glVertex3f(0.0, 0.0, axis_len)
-        
-        OpenGL.GL.glEnd()
-
-    def render(self):
-        
-        self.clear()
-        
-        OpenGL.GL.glClear(OpenGL.GL.GL_COLOR_BUFFER_BIT)
-        OpenGL.GL.glLoadIdentity()
-        OpenGL.GLU.gluLookAt(self.camera_point[0], self.camera_point[1], self.camera_point[2],
-                  self.focal_point[0], self.focal_point[1], self.focal_point[2],
-                  self.up_vector[0], self.up_vector[1], self.up_vector[2])
-        
-        self._draw_axis()
-        
-        for section in self.sections:
-            section.render()
-            
-        for scale in self.scales:
-            scale.render()
-        
-        if time.time() - self.last >= 1:
-            self.framerate.text = str(self.frames)
-            self.frames = 0
-            self.last = time.time()
-        else:
-            self.frames += 1
-        self.framerate.draw()
-        self.flip()
-        
-    def on_resize(self, width, height):
-        OpenGL.GL.glViewport(0, 0, width, height)
-        OpenGL.GL.glMatrixMode(OpenGL.GL.GL_PROJECTION)
-        OpenGL.GL.glLoadIdentity()
-        OpenGL.GLU.gluPerspective(65, width / float(height), 0.01, 500)
-        OpenGL.GL.glMatrixMode(OpenGL.GL.GL_MODELVIEW)
-        return pyglet.event.EVENT_HANDLED
-
-    def on_close(self):
-        self.alive = 0
-
-    def run(self):
-        while self.alive:
-            self.render()
-            # ----> Note: <----
-            #  Without self.dispatch_events() the screen will freeze
-            #  due to the fact that i don't call pyglet.app.run(),
-            #  because i like to have the control when and what locks
-            #  the application, since pyglet.app.run() is a locking call.
-            event = self.dispatch_events()
-            time.sleep(1.0/self.refreshrate)
-            
-class Scale(mesh.Mesh):
+class Scale(optics.mesh.Mesh):
     def __init__(self, shell_point=None, pixel_point=None, angle_vec=None, **kwargs):
-        mesh.Mesh.__init__(self, **kwargs)
+        optics.mesh.Mesh.__init__(self, **kwargs)
         assert shell_point != None
         assert pixel_point != None
         assert angle_vec != None
@@ -483,7 +74,7 @@ class Scale(mesh.Mesh):
         return [numpy.array(point_data.GetTuple(i)) for i in range(0, point_data.GetSize())]
     
     def render(self):
-        mesh.Mesh.render(self)
+        optics.mesh.Mesh.render(self)
         
         if self._rays == None:
             self._calculate_rays()
@@ -502,7 +93,7 @@ class Scale(mesh.Mesh):
                 infinite_rays.append(Ray(base_eye_ray.start + delta, base_eye_ray.end+delta))
         
         #TEMP: just want to see how close we're getting to the correct pixel location:
-        screen_plane = Plane(self._pixel_point, _normalize(self.shell_point - self.pixel_point))
+        screen_plane = Plane(self._pixel_point, normalize(self.shell_point - self.pixel_point))
         
         reflection_length = 1.1 * numpy.linalg.norm(self.shell_point - self.pixel_point)
         self._rays = []
@@ -511,7 +102,7 @@ class Scale(mesh.Mesh):
             normal *= -1.0
             if intersection != None:
                 self._rays.append(LightRay(ray.start, intersection))
-                reverse_ray_direction = _normalize(ray.start - ray.end)
+                reverse_ray_direction = normalize(ray.start - ray.end)
                 midpoint = closestPointOnLine(reverse_ray_direction, Point3D(0.0, 0.0, 0.0), normal)
                 reflection_direction = (2.0 * (midpoint - reverse_ray_direction)) + reverse_ray_direction
                 ray_to_screen = LightRay(intersection, intersection + reflection_length * reflection_direction)
@@ -568,10 +159,10 @@ class PolyScale(Scale):
         
         #TODO: rename the mesh module. it's too generic of a name
         #make a mesh from those arcs
-        base_mesh = mesh.mesh_from_arcs(arcs)
+        base_mesh = optics.mesh.mesh_from_arcs(arcs)
         
         #trim the mesh given our domain cylinder
-        trimmed_mesh = mesh.trim_mesh_with_cone(base_mesh, Point3D(0.0, 0.0, 0.0), _normalize(self._shell_point), self._domain_cylinder_radius)
+        trimmed_mesh = optics.mesh.trim_mesh_with_cone(base_mesh, Point3D(0.0, 0.0, 0.0), normalize(self._shell_point), self._domain_cylinder_radius)
         
         return trimmed_mesh
 
@@ -586,60 +177,11 @@ class PolyScale(Scale):
         transformed_end = self._world_to_local(end)
         #use the cython collision function to figure out where we collided
         #TODO: unsure if we actually need to normalize...
-        point = self._poly._intersection(transformed_start, _normalize(transformed_end-transformed_start))
+        point = self._poly._intersection(transformed_start, normalize(transformed_end-transformed_start))
         #calculate the normal as well
         normal = -1.0 * self._poly.normal(point)
         return self._local_to_world(point), self._local_to_world_rotation.dot(normal)
     
-def create_arc(principal_ray, shell_point, screen_point, light_radius, angle_vec, is_horizontal=None):
-    assert is_horizontal != None, "Must pass this parameter"
-    
-    #define a vector field for the surface normals of the shell.
-    #They are completely constrained given the location of the pixel and the fact
-    #that the reflecting ray must be at a particular angle        
-    arc_plane_normal = _get_arc_plane_normal(principal_ray, is_horizontal)
-    desired_light_direction_off_screen_towards_eye = -1.0 * angle_vector_to_vector(angle_vec, principal_ray)
-    return create_arc_helper(shell_point, screen_point, light_radius, arc_plane_normal, desired_light_direction_off_screen_towards_eye)
-    
-#just a continuation of the above function. allows you to pass in the normals so that this can work in taylor poly space
-def create_arc_helper(shell_point, screen_point, light_radius, arc_plane_normal, desired_light_direction_off_screen_towards_eye):
-
-    def f(point, t):
-        point_to_screen_vec = _normalize(screen_point - point)
-        surface_normal = _normalize(point_to_screen_vec + desired_light_direction_off_screen_towards_eye)
-        derivative = _normalize(numpy.cross(surface_normal, arc_plane_normal))
-        return derivative
-    
-    #TODO: this should really be based on light_radius...
-    
-    #estimate how long the piece of the shell will be (the one that is large enough to reflect all rays)
-    #overestimates will waste time, underestimates cause it to crash :-P
-    #note that we're doing this one half at a time
-    def estimate_t_values():
-        #TODO: make this faster if necessary by doing the following:
-            #define the simple line that reflects the primary ray
-            #intersect that with the max and min rays from the eye
-            #check the distance between those intersections and double it or something
-        t_step = 0.05
-        if LOW_QUALITY_MODE:
-            t_step = 0.5
-        max_t = 5.0
-        return numpy.arange(0.0, max_t, t_step)
-    t_values = estimate_t_values()
-
-    #use the vector field to define the exact shape of the surface (first half)
-    half_arc = scipy.integrate.odeint(f, shell_point, t_values)
-    
-    #do the other half as well
-    def g(point, t):
-        return -1.0 * f(point, t)
-    
-    #combine them
-    other_half_arc = list(scipy.integrate.odeint(g, shell_point, t_values))
-    other_half_arc.pop(0)
-    other_half_arc.reverse()
-    return other_half_arc + list(half_arc)
-
 def polyfit2d(x, y, z, order=3):
     ncols = (order + 1)**2
     G = numpy.zeros((x.size, ncols))
@@ -662,31 +204,31 @@ def make_scale(principal_ray, shell_point, screen_point, light_radius, angle_vec
     #taylor polys like to live in f(x,y) -> z
     #so build up the transformation so that the average of the shell -> screen vector and desired light vector is the z axis
     #eg, so the 0,0,0 surface normal is the z axis
-    shell_to_screen_normal = _normalize(screen_point - shell_point)
+    shell_to_screen_normal = normalize(screen_point - shell_point)
     desired_light_dir = -1.0 * angle_vector_to_vector(angle_vec, principal_ray)
-    z_axis_world_dir = _normalize(desired_light_dir + shell_to_screen_normal)
+    z_axis_world_dir = normalize(desired_light_dir + shell_to_screen_normal)
     world_to_local_translation = -1.0 * shell_point
     world_to_local_rotation = numpy.zeros((3, 3))
-    rotation_matrix.R_2vect(world_to_local_rotation, z_axis_world_dir, Point3D(0.0, 0.0, 1.0))
+    optics.rotation_matrix.R_2vect(world_to_local_rotation, z_axis_world_dir, Point3D(0.0, 0.0, 1.0))
     #local_to_world_rotation = numpy.linalg.inv(world_to_local_rotation)
     local_to_world_rotation = numpy.zeros((3, 3))
-    rotation_matrix.R_2vect(local_to_world_rotation, Point3D(0.0, 0.0, 1.0), z_axis_world_dir)
+    optics.rotation_matrix.R_2vect(local_to_world_rotation, Point3D(0.0, 0.0, 1.0), z_axis_world_dir)
     
     def translate_to_local(p):
         return world_to_local_rotation.dot(p + world_to_local_translation)
     
     #convert everything into local coordinates
     transformed_light_dir = world_to_local_rotation.dot(desired_light_dir)
-    h_arc_plane_normal = _get_arc_plane_normal(principal_ray, True)
-    v_arc_plane_normal = _get_arc_plane_normal(principal_ray, False)
+    h_arc_plane_normal = get_arc_plane_normal(principal_ray, True)
+    v_arc_plane_normal = get_arc_plane_normal(principal_ray, False)
     transformed_screen_point = translate_to_local(screen_point)
     transformed_shell_point = Point3D(0.0, 0.0, 0.0)
     
     #actually go calculate the points that we want to use to fit our polynomial
-    spine = create_arc_helper(transformed_shell_point, transformed_screen_point, light_radius, v_arc_plane_normal, transformed_light_dir)
+    spine = optics.calculations.create_arc_helper(transformed_shell_point, transformed_screen_point, light_radius, v_arc_plane_normal, transformed_light_dir)
     ribs = []
     for point in spine:
-        rib = create_arc_helper(point, transformed_screen_point, light_radius, h_arc_plane_normal, transformed_light_dir)
+        rib = optics.calculations.create_arc_helper(point, transformed_screen_point, light_radius, h_arc_plane_normal, transformed_light_dir)
         ribs.append(numpy.array(rib))
         
     points = numpy.vstack(ribs)
@@ -716,10 +258,10 @@ def make_scale(principal_ray, shell_point, screen_point, light_radius, angle_vec
 
 def make_old_scale(principal_ray, shell_point, screen_point, light_radius, angle_vec):
 
-    spine = create_arc(principal_ray, shell_point, screen_point, light_radius, angle_vec, is_horizontal=False)
+    spine = optics.calculations.create_arc(principal_ray, shell_point, screen_point, light_radius, angle_vec, is_horizontal=False)
     ribs = []
     for point in spine:
-        rib = create_arc(principal_ray, point, screen_point, light_radius, angle_vec, is_horizontal=True)
+        rib = optics.calculations.create_arc(principal_ray, point, screen_point, light_radius, angle_vec, is_horizontal=True)
         ribs.append(numpy.array(rib))
         
     #TODO: replace this with original:
@@ -727,9 +269,8 @@ def make_old_scale(principal_ray, shell_point, screen_point, light_radius, angle
         shell_point=shell_point,
         pixel_point=screen_point,
         angle_vec=angle_vec,
-        mesh=mesh.mesh_from_arcs(ribs)
+        mesh=optics.mesh.mesh_from_arcs(ribs)
     )
-
 
     #scale = mesh.Mesh(mesh.mesh_from_arcs(ribs))
     ##scale.export("temp.stl")
@@ -737,7 +278,7 @@ def make_old_scale(principal_ray, shell_point, screen_point, light_radius, angle
     #    shell_point=shell_point,
     #    pixel_point=screen_point,
     #    angle_vec=angle_vec,
-    #    mesh=mesh.trim_mesh_with_cone(scale._mesh, Point3D(0.0, 0.0, 0.0), _normalize(shell_point), light_radius)
+    #    mesh=optics.mesh.trim_mesh_with_cone(scale._mesh, Point3D(0.0, 0.0, 0.0), normalize(shell_point), light_radius)
     #)
     ##trimmed_scale.export("temp.stl")
     #return trimmed_scale
@@ -780,7 +321,7 @@ def find_scale_and_error_at_best_distance(reference_scales, principal_ray, scree
     """
     #seems pretty arbitrary, but honestly at that point the gains here are pretty marginal
     num_iterations = 14
-    if LOW_QUALITY_MODE:
+    if optics.globals.LOW_QUALITY_MODE:
         num_iterations = 8
     angle_normal = angle_vector_to_vector(angle_vec, principal_ray)
     reference_distance = numpy.linalg.norm(reference_scales[0].shell_point)
@@ -821,7 +362,7 @@ def optimize_scale_for_angle(optimization_normal, lower_bound, upper_bound, num_
     #print("'best' error: " + str(error_for_best_scale))
     
     #doing another crawl along the line because why not
-    optimization_normal = _normalize(best_screen_point - prev_scale.pixel_point)
+    optimization_normal = normalize(best_screen_point - prev_scale.pixel_point)
     final_scale, final_error = explore_direction(optimization_normal, lower_bound, upper_bound, num_iterations, prev_scale, principal_ray, light_radius, angle_vec)
     #print("Final error: " + str(final_error))
     #scales.append(final_scale)
@@ -871,7 +412,7 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, princip
     
     #create another scale right above it for debugging the error function
     #shell_point = initial_shell_point + Point3D(0.0, 3.0, -1.0)
-    #angle_vec = AngleVector(math.pi/2.0, _normalized_vector_angle(principal_ray, _normalize(shell_point)))
+    #angle_vec = AngleVector(math.pi/2.0, normalized_vector_angle(principal_ray, normalize(shell_point)))
     #other_scale = make_scale(principal_ray, shell_point, initial_screen_point+Point3D(0.0, -min_pixel_spot_size, min_pixel_spot_size), light_radius, angle_vec)
     #scales = [center_scale, other_scale]
     
@@ -913,7 +454,7 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, princip
     ##NOTE: is a hack / guestimate
     #upper_bound = 2.0 * light_radius
     #num_iterations = 16
-    #if LOW_QUALITY_MODE:
+    #if optics.globals.LOW_QUALITY_MODE:
     #    num_iterations = 8
     #    
     #phi_step = 0.05
@@ -929,7 +470,7 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, princip
     #            theta = 3.0 * math.pi / 2.0
     #        angle_vec = AngleVector(theta, phi)
     #        #TODO: obviously this has to change in the general case
-    #        optimization_normal = direction * numpy.cross(Point3D(1.0, 0.0, 0.0), _normalize(prev_scale.shell_point - prev_scale.pixel_point))
+    #        optimization_normal = direction * numpy.cross(Point3D(1.0, 0.0, 0.0), normalize(prev_scale.shell_point - prev_scale.pixel_point))
     #        scale, error = optimize_scale_for_angle(optimization_normal, lower_bound, upper_bound, num_iterations, prev_scale, principal_ray, light_radius, angle_vec)
     #        scales.append(scale)
     #        prev_scale = scale
@@ -961,7 +502,11 @@ def plot_error(x, y, z):
     plt.show()
 
 def main():
-    win = Window(23) # set the fps
+    win = viewer.window.Window(23) # set the fps
+    initial_shell_point = Point3D(0.0, 0.0, -60.0)
+    initial_screen_point = Point3D(0.0, 40.0, -20.0)
+    principal_ray = Point3D(0.0, 0.0, -1.0)
+    win.scales = create_surface_via_scales(initial_shell_point, initial_screen_point, principal_ray)
     win.run()
 
 if __name__ == '__main__':

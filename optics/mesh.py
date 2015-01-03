@@ -5,7 +5,7 @@ import numpy
 import pyglet.gl
 import pyglet.graphics
 
-import optics
+from optics.base import *
 
 def mesh_from_arcs(arcs):
     #create all of the points so they have sensible, shared indices
@@ -57,7 +57,7 @@ def trim_mesh_with_cone(mesh, cone_point, cone_normal, cone_radius):
     w = cone_point
     v = cone_end
     n = w - v
-    v_w_sq_len = optics.dist2(v, w)
+    v_w_sq_len = dist2(v, w)
    
     points = mesh.GetPoints().GetData()
     cell_array = mesh.GetPolys()
