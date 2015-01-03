@@ -3,89 +3,46 @@
 """
 Installation instructions: sudo pip install pyglet
 
-This is a hacked together application to directly manipulate the surface in 2D.
-
-All assumptions and coordinates are the same as in main.py. It's simply 2D because we're viewing a 3D scene from (zoom, 0, 0) looking at (0, 0, 0)
+This application is meant to be a complete replacement for main.py (except I'm trying to never use pyoptools)
+All assumptions and coordinates are the same as in main.py.
 
 Usage instructions:
 
-left click and drag to move pixels or shell sections
+left click and drag to move screen pixels or shell sections
 right click to make a new piece of shell (and paired pixel)
 middle mouse drag to pan
 middle mouse roll to zoom
+shift + middle mouse to rotate the world
 """
 
 import math
 import sys
 import itertools
-from time import time, sleep
+import time
 
-from OpenGL import GL, GLU
+import OpenGL.GL
+import OpenGL.GLU
 import pyglet
-from pyglet.gl import *
 import pyglet.window.key
+import pyglet.window.mouse
 import numpy
 import scipy.integrate
 import scipy.optimize
-
+import pyximport; pyximport.install()
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import axes3d, Axes3D #<-- Note the capitalization! 
+import mpl_toolkits.mplot3d
 
 import rotation_matrix
-from optics import Point3D, _normalize, _normalized_vector_angle, _get_arc_plane_normal, angle_vector_to_vector, AngleVector, distToSegment, closestPointOnLine
+import optics
+#imported by name for convenience
+from optics import Point3D, _normalize, _normalized_vector_angle, _get_arc_plane_normal, angle_vector_to_vector, AngleVector, distToSegment, closestPointOnLine, Plane, Ray
 import mesh
-
-import pyximport; pyximport.install()
 import hacks.taylor_poly
 
-#TODO: use the pyglet codes here instead
-LEFT_MOUSE_BUTTON_CODE = 1L
-MIDDLE_MOUSE_BUTTON_CODE = 2L
-RIGHT_MOUSE_BUTTON_CODE = 4L
-
 #enable this to speed up development. Just cuts back on a lot of precision
-LOW_QUALITY_MODE = False
+LOW_QUALITY_MODE = True
 
-class Plane(object):
-    def __init__(self, point, normal):
-        self._point = point
-        self._normal = normal
-        
-    # intersection function
-    def intersect_line(self, p0, p1, epsilon=0.0000001):
-        """
-        p0, p1: define the line    
-        return a Vector or None (when the intersection can't be found).
-        """
-    
-        u = p1 - p0
-        w = p0 - self._point
-        dot = self._normal.dot(u)
-    
-        if abs(dot) > epsilon:
-            # the factor of the point between p0 -> p1 (0 - 1)
-            # if 'fac' is between (0 - 1) the point intersects with the segment.
-            # otherwise:
-            #  < 0.0: behind p0.
-            #  > 1.0: infront of p1.
-            fac = -self._normal.dot(w) / dot
-            return p0 + u*fac
-        else:
-            # The segment is parallel to plane
-            return None
 
-class Ray(object):
-    def __init__(self, start, end):
-        self._start = start
-        self._end = end
-        
-    @property
-    def start(self): 
-        return self._start
-    
-    @property
-    def end(self): 
-        return self._end
         
 class VisibleLineSegment(Ray):
     def __init__(self, start, end, color=(1.0, 1.0, 1.0)):
@@ -93,11 +50,11 @@ class VisibleLineSegment(Ray):
         self._color = color
         
     def render(self):
-        glBegin(GL_LINES)
-        glColor3f(*self._color)
-        glVertex3f(*self._start)
-        glVertex3f(*self._end)
-        glEnd()
+        OpenGL.GL.glBegin(OpenGL.GL.GL_LINES)
+        OpenGL.GL.glColor3f(*self._color)
+        OpenGL.GL.glVertex3f(*self._start)
+        OpenGL.GL.glVertex3f(*self._end)
+        OpenGL.GL.glEnd()
 
 class LightRay(VisibleLineSegment):
     def __init__(self, start, end):
@@ -124,7 +81,7 @@ class SceneObject(object):
             self._change_handler()
             
     def render(self):
-        glColor3f(*self._color)
+        OpenGL.GL.glColor3f(*self._color)
         
     def distance_to_ray(self, ray):
         """
@@ -160,9 +117,9 @@ class SceneObject(object):
 class ScreenPixel(SceneObject):
     def render(self):
         SceneObject.render(self)
-        glBegin(GL_POINTS)
-        glVertex3f(*self._pos)
-        glEnd()
+        OpenGL.GL.glBegin(OpenGL.GL.GL_POINTS)
+        OpenGL.GL.glVertex3f(*self._pos)
+        OpenGL.GL.glEnd()
 
 class ReflectiveSurface(SceneObject):
     def __init__(self, **kwargs):
@@ -307,7 +264,7 @@ class Window(pyglet.window.Window):
         super(Window, self).__init__(vsync = False)
         self.frames = 0
         self.framerate = pyglet.text.Label(text='Unknown', font_name='Verdana', font_size=8, x=10, y=10, color=(255,255,255,255))
-        self.last = time()
+        self.last = time.time()
         self.alive = 1
         self.refreshrate = refreshrate
         self.left_click = None
@@ -341,11 +298,11 @@ class Window(pyglet.window.Window):
         self.render()
         
     def on_mouse_press(self, x, y, button, modifiers):
-        if button == RIGHT_MOUSE_BUTTON_CODE:
+        if button == pyglet.window.mouse.RIGHT:
             location = self._mouse_to_2d_plane(x, y)
             self.sections.append(ShellSection(location, Point3D(0.0, 40.0, -20.0), self.num_rays, self.pupil_radius))
             
-        elif button == LEFT_MOUSE_BUTTON_CODE:
+        elif button == pyglet.window.mouse.LEFT:
             self.left_click = x,y
         
             ray = self._click_to_ray(x, y)
@@ -355,7 +312,7 @@ class Window(pyglet.window.Window):
             else:
                 self.selection = []
                 
-        elif button == MIDDLE_MOUSE_BUTTON_CODE:
+        elif button == pyglet.window.mouse.MIDDLE:
             self.middle_click = x,y
 
     def on_mouse_drag(self, x, y, dx, dy, buttons, modifiers):
@@ -404,9 +361,9 @@ class Window(pyglet.window.Window):
         return point
 
     def on_mouse_release(self, x, y, button, modifiers):
-        if button == LEFT_MOUSE_BUTTON_CODE:
+        if button == pyglet.window.mouse.LEFT:
             self.left_click = None
-        elif button == MIDDLE_MOUSE_BUTTON_CODE:
+        elif button == pyglet.window.mouse.MIDDLE:
             self.middle_click = None
             
     def on_mouse_scroll(self, x, y, scroll_x, scroll_y):
@@ -419,39 +376,39 @@ class Window(pyglet.window.Window):
         self.camera_point = self.focal_point + distance * _normalize(self.camera_point - self.focal_point)
         
     def _click_to_ray(self, x, y):
-        model = GL.glGetDoublev(GL.GL_MODELVIEW_MATRIX)
-        proj = GL.glGetDoublev(GL.GL_PROJECTION_MATRIX)
-        view = GL.glGetIntegerv(GL.GL_VIEWPORT)
-        start = Point3D(*GLU.gluUnProject(x, y, 0.0, model=model, proj=proj, view=view))
-        end = Point3D(*GLU.gluUnProject(x, y, 1.0, model=model, proj=proj, view=view))
+        model = OpenGL.GL.glGetDoublev(OpenGL.GL.GL_MODELVIEW_MATRIX)
+        proj = OpenGL.GL.glGetDoublev(OpenGL.GL.GL_PROJECTION_MATRIX)
+        view = OpenGL.GL.glGetIntegerv(OpenGL.GL.GL_VIEWPORT)
+        start = Point3D(*OpenGL.GLU.gluUnProject(x, y, 0.0, model=model, proj=proj, view=view))
+        end = Point3D(*OpenGL.GLU.gluUnProject(x, y, 1.0, model=model, proj=proj, view=view))
         return Ray(start, end)
 
     def _draw_axis(self):
         axis_len = 10.0
         
-        glBegin(GL_LINES)
+        OpenGL.GL.glBegin(OpenGL.GL.GL_LINES)
         
-        glColor3f(1.0, 0.0, 0.0)
-        glVertex3f(0.0, 0.0, 0.0)
-        glVertex3f(axis_len, 0.0, 0.0)
+        OpenGL.GL.glColor3f(1.0, 0.0, 0.0)
+        OpenGL.GL.glVertex3f(0.0, 0.0, 0.0)
+        OpenGL.GL.glVertex3f(axis_len, 0.0, 0.0)
         
-        glColor3f(0.0, 1.0, 0.0)
-        glVertex3f(0.0, 0.0, 0.0)
-        glVertex3f(0.0, axis_len, 0.0)
+        OpenGL.GL.glColor3f(0.0, 1.0, 0.0)
+        OpenGL.GL.glVertex3f(0.0, 0.0, 0.0)
+        OpenGL.GL.glVertex3f(0.0, axis_len, 0.0)
         
-        glColor3f(0.0, 0.0, 1.0)
-        glVertex3f(0.0, 0.0, 0.0)
-        glVertex3f(0.0, 0.0, axis_len)
+        OpenGL.GL.glColor3f(0.0, 0.0, 1.0)
+        OpenGL.GL.glVertex3f(0.0, 0.0, 0.0)
+        OpenGL.GL.glVertex3f(0.0, 0.0, axis_len)
         
-        glEnd()
+        OpenGL.GL.glEnd()
 
     def render(self):
         
         self.clear()
         
-        glClear(GL_COLOR_BUFFER_BIT)
-        glLoadIdentity()
-        gluLookAt(self.camera_point[0], self.camera_point[1], self.camera_point[2],
+        OpenGL.GL.glClear(OpenGL.GL.GL_COLOR_BUFFER_BIT)
+        OpenGL.GL.glLoadIdentity()
+        OpenGL.GLU.gluLookAt(self.camera_point[0], self.camera_point[1], self.camera_point[2],
                   self.focal_point[0], self.focal_point[1], self.focal_point[2],
                   self.up_vector[0], self.up_vector[1], self.up_vector[2])
         
@@ -463,21 +420,21 @@ class Window(pyglet.window.Window):
         for scale in self.scales:
             scale.render()
         
-        if time() - self.last >= 1:
+        if time.time() - self.last >= 1:
             self.framerate.text = str(self.frames)
             self.frames = 0
-            self.last = time()
+            self.last = time.time()
         else:
             self.frames += 1
         self.framerate.draw()
         self.flip()
         
     def on_resize(self, width, height):
-        glViewport(0, 0, width, height)
-        glMatrixMode(GL_PROJECTION)
-        glLoadIdentity()
-        gluPerspective(65, width / float(height), 0.01, 500)
-        glMatrixMode(GL_MODELVIEW)
+        OpenGL.GL.glViewport(0, 0, width, height)
+        OpenGL.GL.glMatrixMode(OpenGL.GL.GL_PROJECTION)
+        OpenGL.GL.glLoadIdentity()
+        OpenGL.GLU.gluPerspective(65, width / float(height), 0.01, 500)
+        OpenGL.GL.glMatrixMode(OpenGL.GL.GL_MODELVIEW)
         return pyglet.event.EVENT_HANDLED
 
     def on_close(self):
@@ -492,7 +449,7 @@ class Window(pyglet.window.Window):
             #  because i like to have the control when and what locks
             #  the application, since pyglet.app.run() is a locking call.
             event = self.dispatch_events()
-            sleep(1.0/self.refreshrate)
+            time.sleep(1.0/self.refreshrate)
             
 class Scale(mesh.Mesh):
     def __init__(self, shell_point=None, pixel_point=None, angle_vec=None, **kwargs):
@@ -999,7 +956,7 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, princip
 
 def plot_error(x, y, z):
     fig = plt.figure()
-    ax = Axes3D(fig)
+    ax = mpl_toolkits.mplot3d.Axes3D(fig)
     p = ax.plot_wireframe(x, y, z)
     plt.show()
 

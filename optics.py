@@ -12,10 +12,53 @@ import rotation_matrix
 #these are very simple classes. just an alias for a numpy array that gives a little more intentionality to the code
 def Point2D(*args):
     return numpy.array(args)
+
 def Point3D(*args):
     return numpy.array(args)
+
 #Used for vision rays. See module docstring
 AngleVector = namedtuple('AngleVector', ['theta', 'phi'])
+
+class Plane(object):
+    def __init__(self, point, normal):
+        self._point = point
+        self._normal = normal
+        
+    # intersection function
+    def intersect_line(self, p0, p1, epsilon=0.0000001):
+        """
+        p0, p1: define the line    
+        return a Vector or None (when the intersection can't be found).
+        """
+    
+        u = p1 - p0
+        w = p0 - self._point
+        dot = self._normal.dot(u)
+    
+        if abs(dot) > epsilon:
+            # the factor of the point between p0 -> p1 (0 - 1)
+            # if 'fac' is between (0 - 1) the point intersects with the segment.
+            # otherwise:
+            #  < 0.0: behind p0.
+            #  > 1.0: infront of p1.
+            fac = -self._normal.dot(w) / dot
+            return p0 + u*fac
+        else:
+            # The segment is parallel to plane
+            return None
+
+class Ray(object):
+    def __init__(self, start, end):
+        self._start = start
+        self._end = end
+        
+    @property
+    def start(self): 
+        return self._start
+    
+    @property
+    def end(self): 
+        return self._end
 
 def _get_arc_plane_normal(principal_ray, is_horizontal):
     """
