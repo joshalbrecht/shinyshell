@@ -613,7 +613,7 @@ class PolyScale(Scale):
         base_mesh = mesh.mesh_from_arcs(arcs)
         
         #trim the mesh given our domain cylinder
-        trimmed_mesh = mesh.trim_mesh_with_cone(base_mesh, Point3D(0.0, 0.0, 0.0), self._domain_cylinder_point, self._domain_cylinder_radius)
+        trimmed_mesh = mesh.trim_mesh_with_cone(base_mesh, self._local_to_world(Point3D(0.0, 0.0, 0.0)), self._local_to_world(self._domain_cylinder_point), self._domain_cylinder_radius)
         
         return trimmed_mesh
 
@@ -696,30 +696,33 @@ def make_scale(principal_ray, shell_point, screen_point, light_radius, angle_vec
     """
     
     #taylor polys like to live in f(x,y) -> z
-    #so build up the transformation so that the shell -> screen vector is the z axis
+    #so build up the transformation so that the average of the shell -> screen vector and desired light vector is the z axis
+    #eg, so the 0,0,0 surface normal is the z axis
     shell_to_screen_normal = _normalize(screen_point - shell_point)
+    desired_light_dir = -1.0 * angle_vector_to_vector(angle_vec, principal_ray)
+    z_axis_world_dir = _normalize(desired_light_dir + shell_to_screen_normal)
     world_to_local_translation = -1.0 * shell_point
     world_to_local_rotation = numpy.zeros((3, 3))
-    rotation_matrix.R_2vect(world_to_local_rotation, shell_to_screen_normal, Point3D(0.0, 0.0, 1.0))
+    rotation_matrix.R_2vect(world_to_local_rotation, z_axis_world_dir, Point3D(0.0, 0.0, 1.0))
     #local_to_world_rotation = numpy.linalg.inv(world_to_local_rotation)
     local_to_world_rotation = numpy.zeros((3, 3))
-    rotation_matrix.R_2vect(local_to_world_rotation, Point3D(0.0, 0.0, 1.0), shell_to_screen_normal)
+    rotation_matrix.R_2vect(local_to_world_rotation, Point3D(0.0, 0.0, 1.0), z_axis_world_dir)
     
     def translate_to_local(p):
         return world_to_local_rotation.dot(p + world_to_local_translation)
     
     #convert everything into local coordinates
-    desired_light_direction_off_screen_towards_eye = world_to_local_rotation.dot(-1.0 * angle_vector_to_vector(angle_vec, principal_ray))
-    h_arc_plane_normal = world_to_local_rotation.dot(_get_arc_plane_normal(principal_ray, True))
-    v_arc_plane_normal = world_to_local_rotation.dot(_get_arc_plane_normal(principal_ray, False))
+    transformed_light_dir = world_to_local_rotation.dot(desired_light_dir)
+    h_arc_plane_normal = _get_arc_plane_normal(principal_ray, True)
+    v_arc_plane_normal = _get_arc_plane_normal(principal_ray, False)
     transformed_screen_point = translate_to_local(screen_point)
     transformed_shell_point = Point3D(0.0, 0.0, 0.0)
     
     #actually go calculate the points that we want to use to fit our polynomial
-    spine = create_arc_helper(transformed_shell_point, transformed_screen_point, light_radius, desired_light_direction_off_screen_towards_eye, v_arc_plane_normal)
+    spine = create_arc_helper(transformed_shell_point, transformed_screen_point, light_radius, v_arc_plane_normal, transformed_light_dir)
     ribs = []
     for point in spine:
-        rib = create_arc_helper(point, transformed_screen_point, light_radius, desired_light_direction_off_screen_towards_eye, h_arc_plane_normal)
+        rib = create_arc_helper(point, transformed_screen_point, light_radius, h_arc_plane_normal, transformed_light_dir)
         ribs.append(numpy.array(rib))
         
     points = numpy.vstack(ribs)
