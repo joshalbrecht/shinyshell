@@ -125,7 +125,7 @@ def make_scale(principal_ray, shell_point, screen_point, light_radius, angle_vec
     for i in range(0, order):
         cohef.append(coefficients[i*order:(i+1)*order])
     cohef = numpy.array(cohef).copy(order='C')
-    poly = optics.taylor_poly.TaylorPoly(cohef=cohef.T)
+    poly = optics.taylor_poly.TaylorPoly(cohef=cohef.T, domain_radius=light_radius, domain_point=translate_to_local(screen_point))
     
     scale = optics.scale.PolyScale(
         shell_point=shell_point,
@@ -304,47 +304,47 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, princip
     #simply walk along the direction orthogonal to the last pixel -> shell vector in the current plane
     #and find the location with the minimal error
     
-    lower_bound = 0.0
-    #NOTE: is a hack / guestimate
-    upper_bound = 2.0 * light_radius
-    num_iterations = 16
-    if optics.globals.LOW_QUALITY_MODE:
-        num_iterations = 8
-        
-    phi_step = 0.05
-    final_phi = 0.04#fov/2.0
-    
-    for direction in (1.0, -1.0):
-        phi = 0.0
-        prev_scale = center_scale
-        while phi < final_phi:
-            phi += phi_step
-            theta = math.pi / 2.0
-            if direction < 0:
-                theta = 3.0 * math.pi / 2.0
-            angle_vec = AngleVector(theta, phi)
-            #TODO: obviously this has to change in the general case
-            optimization_normal = direction * numpy.cross(Point3D(1.0, 0.0, 0.0), normalize(prev_scale.shell_point - prev_scale.pixel_point))
-            scale, error = optimize_scale_for_angle(optimization_normal, lower_bound, upper_bound, num_iterations, prev_scale, principal_ray, light_radius, angle_vec)
-            scales.append(scale)
-            prev_scale = scale
-            
-    #print out a little graph of the errors of the scales so we can get a sense
-    #NOTE: this shuffling is just so that the errors are printed in an intuitive order
-    num_scales = len(scales)
-    num_scales_in_arc = (num_scales - 1) / 2
-    lower_arc = scales[num_scales_in_arc+1:]
-    lower_arc.reverse()
-    ordered_scales = lower_arc + scales[:num_scales_in_arc+1]
-    print("theta  phi     error")
-    for scale in ordered_scales:
-        print("%.2f %.2f    %.5f" % (scale.angle_vec.theta, scale.angle_vec.phi, scale.shell_distance_error))
-        
-    #export all of the scales as one massive STL
-    merged_mesh = mesh.merge_meshes(ordered_scales)
-    mesh.Mesh(mesh=merged_mesh).export("all_scales.stl")
-    
-    #export the shape formed by the screen pixels as an STL
-    create_screen_mesh(ordered_scales).export("screen.stl")
+    #lower_bound = 0.0
+    ##NOTE: is a hack / guestimate
+    #upper_bound = 2.0 * light_radius
+    #num_iterations = 16
+    #if optics.globals.LOW_QUALITY_MODE:
+    #    num_iterations = 8
+    #    
+    #phi_step = 0.05
+    #final_phi = 0.04#fov/2.0
+    #
+    #for direction in (1.0, -1.0):
+    #    phi = 0.0
+    #    prev_scale = center_scale
+    #    while phi < final_phi:
+    #        phi += phi_step
+    #        theta = math.pi / 2.0
+    #        if direction < 0:
+    #            theta = 3.0 * math.pi / 2.0
+    #        angle_vec = AngleVector(theta, phi)
+    #        #TODO: obviously this has to change in the general case
+    #        optimization_normal = direction * numpy.cross(Point3D(1.0, 0.0, 0.0), normalize(prev_scale.shell_point - prev_scale.pixel_point))
+    #        scale, error = optimize_scale_for_angle(optimization_normal, lower_bound, upper_bound, num_iterations, prev_scale, principal_ray, light_radius, angle_vec)
+    #        scales.append(scale)
+    #        prev_scale = scale
+    #        
+    ##print out a little graph of the errors of the scales so we can get a sense
+    ##NOTE: this shuffling is just so that the errors are printed in an intuitive order
+    #num_scales = len(scales)
+    #num_scales_in_arc = (num_scales - 1) / 2
+    #lower_arc = scales[num_scales_in_arc+1:]
+    #lower_arc.reverse()
+    #ordered_scales = lower_arc + scales[:num_scales_in_arc+1]
+    #print("theta  phi     error")
+    #for scale in ordered_scales:
+    #    print("%.2f %.2f    %.5f" % (scale.angle_vec.theta, scale.angle_vec.phi, scale.shell_distance_error))
+    #    
+    ##export all of the scales as one massive STL
+    #merged_mesh = mesh.merge_meshes(ordered_scales)
+    #mesh.Mesh(mesh=merged_mesh).export("all_scales.stl")
+    #
+    ##export the shape formed by the screen pixels as an STL
+    #create_screen_mesh(ordered_scales).export("screen.stl")
     
     return scales

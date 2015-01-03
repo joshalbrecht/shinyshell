@@ -66,7 +66,6 @@ class Scale(optics.mesh.Mesh):
         self._rays = []
         for ray in infinite_rays:
             intersection, normal = self.intersection_plus_normal(ray.start, ray.end)
-            normal *= -1.0
             if intersection != None:
                 self._rays.append(LightRay(ray.start, intersection))
                 reverse_ray_direction = normalize(ray.start - ray.end)
@@ -172,7 +171,9 @@ class PolyScale(Scale):
         #use the cython collision function to figure out where we collided
         #TODO: unsure if we actually need to normalize...
         point = self._poly._intersection(transformed_start, normalize(transformed_end-transformed_start))
+        if point == None:
+            return None, None
         #calculate the normal as well
-        normal = -1.0 * self._poly.normal(point)
+        normal = self._poly.normal(point)
         return self._local_to_world(point), self._local_to_world_rotation.dot(normal)
     

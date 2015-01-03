@@ -22,6 +22,8 @@
 '''
 from numpy import  array, asarray, arange, polyadd, polymul, polysub, polyval,\
      dot, inf, roots, zeros, meshgrid, sqrt,where, abs,  isreal
+     
+from optics.base import *
 
 cimport numpy as np
 cimport cython
@@ -143,12 +145,22 @@ cdef class TaylorPoly(object):
     #  [[ ... , ... , ... ,.....],
     #  [[ x0y.., x1y..,x2y., ...],
     cdef object cohef
+    cdef object domain_radius
+    cdef object domain_point
+    cdef object domain_sq_radius
 
-    def __init__(self,cohef=(0,0,0)):
+    def __init__(self,cohef=(0,0,0), domain_radius=None, domain_point=None):
         self.cohef = cohef
         #self.cohef=array(cohef)
         #self.addkey("cohef")
-
+        self.domain_radius = domain_radius
+        self.domain_point = normalize(domain_point)
+        self.domain_sq_radius = domain_radius * domain_radius
+        
+    cpdef in_domain(self, p):
+        n = self.domain_point
+        delta = p - (p.dot(n) * n)
+        return delta.dot(delta) < self.domain_sq_radius
 
     #~ def __reduce__(self):
         #~
@@ -225,7 +237,7 @@ cdef class TaylorPoly(object):
         r=roots(result)
         
         dist=inf
-        ret_val=array((inf,inf,inf))
+        ret_val=None#array((inf,inf,inf))
         for i in r:
             #Just consider positive solutions i
             #if i is negative , the surface is behind the lightning ...
@@ -233,12 +245,13 @@ cdef class TaylorPoly(object):
             if i>=0. and isreal(i):
                 i=i.real
                 pc=array((polyval(RX,i),polyval(RY,i),polyval(RZ,i)))
-                ## ray origin distance to the cutting point ( squared)
-                dist_c=dot(pc-start,pc-start)
-                #Find the minimum distance
-                if dist_c<dist:
-                    ret_val=pc
-                    dist=dist_c
+                if self.in_domain(pc):
+                    ## ray origin distance to the cutting point ( squared)
+                    dist_c=dot(pc-start,pc-start)
+                    #Find the minimum distance
+                    if dist_c<dist:
+                        ret_val=pc
+                        dist=dist_c
 
         return ret_val
 
