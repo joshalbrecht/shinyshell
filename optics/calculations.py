@@ -37,6 +37,8 @@ def create_arc_helper(shell_point, screen_point, light_radius, arc_plane_normal,
         derivative = normalize(numpy.cross(surface_normal, arc_plane_normal))
         return derivative
     
+    #TODO: probably worth doing finer steps along a smaller number of rungs so that they integrate better
+    
     #TODO: this should really be based on light_radius...
     
     #estimate how long the piece of the shell will be (the one that is large enough to reflect all rays)
@@ -47,22 +49,21 @@ def create_arc_helper(shell_point, screen_point, light_radius, arc_plane_normal,
             #define the simple line that reflects the primary ray
             #intersect that with the max and min rays from the eye
             #check the distance between those intersections and double it or something
-        t_step = 0.05
-        if optics.globals.LOW_QUALITY_MODE:
-            t_step = 0.5
+        t_step = 0.1
         max_t = 5.0
         return numpy.arange(0.0, max_t, t_step)
     t_values = estimate_t_values()
+    every_nth = 10
 
     #use the vector field to define the exact shape of the surface (first half)
-    half_arc = scipy.integrate.odeint(f, shell_point, t_values)
+    half_arc = scipy.integrate.odeint(f, shell_point, t_values)[::every_nth]
     
     #do the other half as well
     def g(point, t):
         return -1.0 * f(point, t)
     
     #combine them
-    other_half_arc = list(scipy.integrate.odeint(g, shell_point, t_values))
+    other_half_arc = list(scipy.integrate.odeint(g, shell_point, t_values)[::every_nth])
     other_half_arc.pop(0)
     other_half_arc.reverse()
     return other_half_arc + list(half_arc)
