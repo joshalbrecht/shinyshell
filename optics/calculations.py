@@ -139,7 +139,7 @@ def make_scale(principal_ray, shell_point, screen_point, light_radius, angle_vec
     )
     return scale
     
-def calculate_error(scale, reference_scale):
+def calculate_error(scale, reference_scale, best_error_so_far):
     """
     I guess shoot rays all over the scale (from the pixel location), and see which also hit the reference scale, and get the distance
     least squares? or just sum all of it? I wonder why people use least squares all the time...
@@ -148,6 +148,7 @@ def calculate_error(scale, reference_scale):
     """
     start = reference_scale.pixel_point
     dist = 0.0
+    worst_error_this_iteration = 0.0
     num_hits = 0
     points = reference_scale.points()
     for point in points:
@@ -156,21 +157,26 @@ def calculate_error(scale, reference_scale):
         if intersection_point != None:
             num_hits += 1
             #print numpy.linalg.norm(intersection_point - point)
-            dist += numpy.linalg.norm(intersection_point - point)
+            dist = numpy.linalg.norm(intersection_point - point)
+            if dist > worst_error_this_iteration:
+                worst_error_this_iteration = dist
+                if dist > best_error_so_far:
+                    return dist
             #delta = intersection_point - point
             #dist += delta.dot(delta)
-    average_error = dist / num_hits
+    #average_error = dist / num_hits
     #print num_hits
-    return average_error
+    #return average_error
+    return worst_error_this_iteration
 
-def _get_scale_and_error_at_distance(distance, angle_normal, reference_scales, principal_ray, screen_point, light_radius, angle_vec, poly_order):
+def _get_scale_and_error_at_distance(distance, angle_normal, reference_scales, principal_ray, screen_point, light_radius, angle_vec, poly_order, best_error_so_far):
     shell_point = distance * angle_normal
     scale = make_scale(principal_ray, shell_point, screen_point, light_radius, angle_vec, poly_order)
-    error = max([calculate_error(scale, reference_scale) for reference_scale in reference_scales])
+    error = max([calculate_error(scale, reference_scale, best_error_so_far) for reference_scale in reference_scales])
     scale.shell_distance_error = error
     return scale, error
 
-def find_scale_and_error_at_best_distance(reference_scales, principal_ray, screen_point, light_radius, angle_vec):
+def find_scale_and_error_at_best_distance(reference_scales, principal_ray, screen_point, light_radius, angle_vec, best_error_this_iteration):
     """
     iteratively find the best distance that this scale can be away from the reference scales
     """
@@ -178,36 +184,43 @@ def find_scale_and_error_at_best_distance(reference_scales, principal_ray, scree
     start_time = time.time()
     
     #seems pretty arbitrary, but honestly at that point the gains here are pretty marginal
-    num_iterations = 14
+    num_iterations = 20
+    tolerance = 0.001
     poly_order = optics.globals.POLY_ORDER
-    if optics.globals.LOW_QUALITY_MODE:
-        num_iterations = 8
+    
     angle_normal = angle_vector_to_vector(angle_vec, principal_ray)
     reference_distance = numpy.linalg.norm(reference_scales[0].shell_point)
     
     lower_bound_dist = reference_distance - light_radius
     upper_bound_dist = reference_distance + light_radius
-    
+
     scales = {}
     def f(x):
-        scale, error = _get_scale_and_error_at_distance(x, angle_normal, reference_scales, principal_ray, screen_point, light_radius, angle_vec, poly_order)
+        scale, error = _get_scale_and_error_at_distance(x, angle_normal, reference_scales, principal_ray, screen_point, light_radius, angle_vec, poly_order, best_error_this_iteration[0])
         scales[x] = (scale, error)
+        if error < best_error_this_iteration[0]:
+            best_error_this_iteration[0] = error
         return error
-    #best_value, best_error, err, num_calls = scipy.optimize.fminbound(f, lower_bound_dist, upper_bound_dist, maxfun=num_iterations, xtol=0.001, full_output=True, disp=0)
-    best_value = scipy.optimize.fminbound(f, lower_bound_dist, upper_bound_dist, maxfun=num_iterations, xtol=0.001, full_output=False, disp=0)
+    #best_value, best_error, err, num_calls = scipy.optimize.fminbound(f, lower_bound_dist, upper_bound_dist, maxfun=num_iterations, xtol=0.001, full_output=True, disp=3)
+    best_value = scipy.optimize.fminbound(f, lower_bound_dist, upper_bound_dist, maxfun=num_iterations, xtol=tolerance, full_output=False, disp=0)
     
     print("Time: %s" % (time.time() - start_time))
     
     return scales[best_value]
     
-def explore_direction(optimization_normal, lower_bound, upper_bound, num_iterations, prev_scale, principal_ray, light_radius, angle_vec):
+def explore_direction(optimization_normal, lower_bound, upper_bound, prev_scale, principal_ray, light_radius, angle_vec):
+    
+    num_iterations = 20
+    tolerance = 0.001
+    
     results = {}
+    best_error_this_iteration = [float("inf")]
     def f(x):
         pixel_point = prev_scale.pixel_point + x * optimization_normal
-        scale, error = find_scale_and_error_at_best_distance([prev_scale], principal_ray, pixel_point, light_radius, angle_vec)
+        scale, error = find_scale_and_error_at_best_distance([prev_scale], principal_ray, pixel_point, light_radius, angle_vec, best_error_this_iteration)
         results[x] = (scale, error)
         return error
-    best_value, best_error, err, num_calls = scipy.optimize.fminbound(f, lower_bound, upper_bound, maxfun=num_iterations, xtol=0.0001, full_output=True, disp=3)
+    best_value, best_error, err, num_calls = scipy.optimize.fminbound(f, lower_bound, upper_bound, maxfun=num_iterations, xtol=tolerance, full_output=True, disp=3)
     return results[best_value]
 
 #def optimize_scale_for_angle(optimization_normal, lower_bound, upper_bound, num_iterations, prev_scale, principal_ray, light_radius, angle_vec):
@@ -311,9 +324,6 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, optimiz
     lower_bound = 0.0
     #NOTE: is a hack / guestimate
     upper_bound = 2.0 * light_radius
-    num_iterations = 16
-    if optics.globals.LOW_QUALITY_MODE:
-        num_iterations = 8
         
     phi_step = 0.05
     final_phi = 0.04#fov/2.0
@@ -333,7 +343,7 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, optimiz
             #2DHACK: Still needs to change in the general case
             #old function: used to optimize in multiple directions
             #scale, error = optimize_scale_for_angle(optimization_normal, lower_bound, upper_bound, num_iterations, prev_scale, principal_ray, light_radius, angle_vec)
-            scale, error = explore_direction(direction * optimization_normal, lower_bound, upper_bound, num_iterations, prev_scale, principal_ray, light_radius, angle_vec)
+            scale, error = explore_direction(direction * optimization_normal, lower_bound, upper_bound, prev_scale, principal_ray, light_radius, angle_vec)
             scales.append(scale)
             prev_scale = scale
             
