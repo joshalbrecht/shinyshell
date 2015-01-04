@@ -50,23 +50,25 @@ def create_arc_helper(shell_point, screen_point, light_radius, arc_plane_normal,
             #intersect that with the max and min rays from the eye
             #check the distance between those intersections and double it or something
         t_step = 0.1
+        if optics.globals.LOW_QUALITY_MODE:
+            tolerance = 0.5
         max_t = 5.0
         return numpy.arange(0.0, max_t, t_step)
     t_values = estimate_t_values()
     every_nth = 10
 
     #use the vector field to define the exact shape of the surface (first half)
-    half_arc = scipy.integrate.odeint(f, shell_point, t_values)[::every_nth]
+    half_arc = scipy.integrate.odeint(f, shell_point, t_values)
     
     #do the other half as well
     def g(point, t):
         return -1.0 * f(point, t)
     
+    if optics.globals.LOW_QUALITY_MODE:
+        numpy.concatenate((scipy.integrate.odeint(g, shell_point, t_values)[1:][::-1], half_arc))
+        
     #combine them
-    other_half_arc = list(scipy.integrate.odeint(g, shell_point, t_values)[::every_nth])
-    other_half_arc.pop(0)
-    other_half_arc.reverse()
-    return other_half_arc + list(half_arc)
+    return numpy.concatenate((scipy.integrate.odeint(g, shell_point, t_values)[::every_nth][1:][::-1], half_arc[::every_nth]))
 
 def polyfit2d(x, y, z, order=3):
     ncols = (order + 1)**2
@@ -187,6 +189,8 @@ def find_scale_and_error_at_best_distance(reference_scales, principal_ray, scree
     #seems pretty arbitrary, but honestly at that point the gains here are pretty marginal
     num_iterations = 20
     tolerance = 0.001
+    if optics.globals.LOW_QUALITY_MODE:
+        tolerance = 0.1
     poly_order = optics.globals.POLY_ORDER
     
     angle_normal = angle_vector_to_vector(angle_vec, principal_ray)
@@ -213,6 +217,8 @@ def explore_direction(optimization_normal, lower_bound, upper_bound, prev_scale,
     
     num_iterations = 20
     tolerance = 0.001
+    if optics.globals.LOW_QUALITY_MODE:
+        tolerance = 0.1
     
     results = {}
     best_error_this_iteration = [float("inf")]
