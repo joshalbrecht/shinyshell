@@ -218,6 +218,7 @@ def explore_direction(optimization_normal, lower_bound, upper_bound, prev_scale,
     best_error_this_iteration = [float("inf")]
     def f(x):
         pixel_point = prev_scale.pixel_point + x * optimization_normal
+        #optics.utils.profile_line('find_scale_and_error_at_best_distance([prev_scale], principal_ray, pixel_point, light_radius, angle_vec, best_error_this_iteration)', globals(), locals())
         scale, error = find_scale_and_error_at_best_distance([prev_scale], principal_ray, pixel_point, light_radius, angle_vec, best_error_this_iteration)
         results[x] = (scale, error)
         return error

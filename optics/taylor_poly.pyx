@@ -226,6 +226,12 @@ cdef class TaylorPoly(object):
         start and direction must be in the coordinate system of the surface
         '''
         
+        #2DHACK: since we're only optimizing for the center, we can ignore rays that are not along the center.
+        #strangely, doesn't seem to speed it up very much
+        #if abs(direction[0]) > 0.0001:
+        #    return None
+        #print abs(direction[0])
+        
         #quick initial filter--does this even pass through our bounding sphere?
         if distToLineSquared(Point3D(0.0, 0.0, 0.0), start, start+direction) > self.bounding_radius_sq:
             return None
