@@ -154,16 +154,11 @@ class Mesh(object):
     Most important things that this can do is raycast and render.
     """
     
-    def __init__(self, mesh=None):
+    def __init__(self, mesh):
+        assert mesh != None
         
-        self._mesh = None
-        if mesh != None:
-            self.set_mesh(mesh)
-        
-        self._batch = None
-        
-    def set_mesh(self, mesh):
         self._mesh = mesh
+        self._batch = None
         
         #smooth_loop = vtk.vtkLoopSubdivisionFilter()
         #smooth_loop.SetNumberOfSubdivisions(3)
@@ -189,6 +184,10 @@ class Mesh(object):
         stlWriter.SetFileName(filename)
         stlWriter.SetInput(self._mesh)
         stlWriter.Write()
+        
+    def points(self):
+        point_data = self._mesh.GetPoints().GetData()
+        return [numpy.array(point_data.GetTuple(i)) for i in range(0, point_data.GetSize())]
         
     def render(self):
         if self._batch == None:

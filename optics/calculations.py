@@ -273,7 +273,7 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, optimiz
     #based on the fact that your pupil is approximately this big
     #basically defines how big the region is that we are trying to put in focus with a given scale
     light_radius = 3.0
-    fov = math.pi / 2.0
+    fov = 0.04#math.pi / 2.0
     #per whole the screen. So 90 steps for a 90 degree total FOV would be one step per degree
     total_phi_steps = 90
     
@@ -334,7 +334,7 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, optimiz
     upper_bound = 2.0 * light_radius
         
     phi_step = 0.05
-    final_phi = 0.04#fov/2.0
+    final_phi = fov/2.0
     
     for direction in (1.0, -1.0):
         phi = 0.0
@@ -369,7 +369,8 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, optimiz
         print("%.2f   %.2f    %.5f      %.5f" % (scale.angle_vec.theta, scale.angle_vec.phi, scale.shell_distance_error, scale.focal_error))
         
     #export all of the scales as one massive STL
-    merged_mesh = optics.mesh.merge_meshes(ordered_scales)
+    meshes = [x._mesh for x in ordered_scales]
+    merged_mesh = optics.mesh.merge_meshes(meshes)
     optics.mesh.Mesh(mesh=merged_mesh).export("all_scales.stl")
     
     #export the shape formed by the screen pixels as an STL
