@@ -170,6 +170,9 @@ cdef class TaylorPoly(object):
                         farthest_sq_dist = dist_sq
         self.bounding_radius_sq = farthest_sq_dist
         
+    def __reduce__(self):
+        return self.__class__, (self.cohef, self.domain_radius, self.domain_point)
+        
     cpdef in_domain(self, p):
         n = self.domain_point
         delta = p - (p.dot(n) * n)

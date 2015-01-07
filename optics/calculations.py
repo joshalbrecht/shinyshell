@@ -12,6 +12,7 @@ import threading
 import traceback
 import string
 import random
+import pickle
 
 import numpy
 import scipy.integrate
@@ -314,6 +315,8 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     center_scale = make_scale(principal_ray, initial_shell_point, initial_screen_point, light_radius, AngleVector(0.0, 0.0), optics.globals.POLY_ORDER)
     center_scale.shell_distance_error = 0.0
     #scales = [center_scale]
+    
+    on_new_scale(center_scale)
     
     #create another scale right above it for debugging the error function
     #shell_point = initial_shell_point + Point3D(0.0, 3.0, -1.0)
