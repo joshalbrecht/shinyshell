@@ -212,8 +212,11 @@ class Window(pyglet.window.Window):
         OpenGL.GL.glMatrixMode(OpenGL.GL.GL_MODELVIEW)
         return pyglet.event.EVENT_HANDLED
 
-    def on_close(self):
+    def on_close(self):        
         self.alive = 0
+        self._stop_generating_surface()
+        import os
+        os._exit(0)
 
     def run(self):
         while self.alive:

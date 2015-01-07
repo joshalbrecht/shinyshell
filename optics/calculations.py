@@ -411,11 +411,17 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     threads = [threading.Thread(target=grow_in_direction, args=args) for args in ((1.0, upward_arc), (-1.0, downward_arc))]
     for thread in threads:
         thread.start()
+        
+    while True:
+        all_threads_done = [not t.is_alive() for t in threads]
+    
+        if stop_flag.is_set():
+            return []
+        
+        time.sleep(0.1)
+        
     for thread in threads:
         thread.join()
-    
-    if stop_flag.is_set():
-        return []
     
     #print out a little graph of the errors of the scales so we can get a sense
     downward_arc.reverse()

@@ -65,13 +65,15 @@ def stop_generating_surface():
     
     if master_thread != None:
         stop_flag.set()
-        master_thread.join()
-        master_thread = None
 
     if process_pool != None:
         process_pool.terminate()
         process_pool.join()
         process_pool = None
+        
+    if master_thread != None:
+        master_thread.join()
+        master_thread = None
 
 def main():
     frames_per_second = 23
