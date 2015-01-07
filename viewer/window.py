@@ -18,7 +18,7 @@ import optics.rotation_matrix
 import viewer.scene_objects
 
 class Window(pyglet.window.Window):
-    def __init__(self, refreshrate):
+    def __init__(self, refreshrate, generate_surface, stop_generating_surface):
         super(Window, self).__init__(vsync = False)
         self.frames = 0
         self.framerate = pyglet.text.Label(text='Unknown', font_name='Verdana', font_size=8, x=10, y=10, color=(255,255,255,255))
@@ -40,6 +40,26 @@ class Window(pyglet.window.Window):
         self.create_initial_sections()
         
         self.scales = []
+        
+        self._generate_surface = generate_surface
+        self._stop_generating_surface = stop_generating_surface
+        
+        self._shell_point = Point3D(0.0, 0.0, -60.0)
+        self._screen_point = Point3D(0.0, 40.0, -20.0)
+        self._principal_ray = Point3D(0.0, 0.0, -1.0)
+        self._screen_normal_point = self._screen_point + normalize(Point3D(0.0, -1.0, -1.0))
+        
+        self.on_initial_parameter_change()
+        
+    def on_initial_parameter_change(self):
+        def on_done(scales):
+            self.scales = scales
+        def on_new_scale(scale):
+            self.scales.append(scale)
+        self.scales = []
+        self._stop_generating_surface()
+        screen_normal = normalize(self._screen_normal_point - self._screen_point)
+        self._generate_surface(self._shell_point, self._screen_point, screen_normal, self._principal_ray, on_done, on_new_scale)
         
     #TODO: someday can save and load sections as well perhaps, so we can resume after shutting down
     def create_initial_sections(self):

@@ -28,15 +28,23 @@ class PolyScale(object):
         self._world_to_local_translation = world_to_local_translation
         self._domain_cylinder_point = domain_cylinder_point
         self._domain_cylinder_radius = domain_cylinder_radius
+        
+        self.focal_error = None
+        self.shell_distance_error = None
+        
         self._post_init()
         
     def _post_init(self):
-        self.shell_distance_error = None
+        #arbitrary
         self._num_rays = 11
         self._pupil_radius = 3.0
-        self._rays = None
+        
+        #derived
         self._local_to_world_rotation = numpy.linalg.inv(self._world_to_local_rotation)
         self._local_to_world_translation = -1.0 * self._world_to_local_translation
+        
+        #generated
+        self._rays = None
         self._points = None
         self._mesh = None
         
@@ -50,6 +58,8 @@ class PolyScale(object):
         state['_world_to_local_translation'] = self._world_to_local_translation
         state['_domain_cylinder_point'] = self._domain_cylinder_point
         state['_domain_cylinder_radius'] = self._domain_cylinder_radius
+        state['focal_error'] = self.focal_error
+        state['shell_distance_error'] = self.shell_distance_error
         return state
     
     def __setstate__(self, state):
@@ -58,9 +68,11 @@ class PolyScale(object):
         self._angle_vec = state['_angle_vec']
         self._poly = state['_poly']
         self._world_to_local_rotation = state['_world_to_local_rotation']
-        self._poly = state['_world_to_local_translation']
-        self._poly = state['_domain_cylinder_point']
-        self._poly = state['_domain_cylinder_radius']
+        self._world_to_local_translation = state['_world_to_local_translation']
+        self._domain_cylinder_point = state['_domain_cylinder_point']
+        self._domain_cylinder_radius = state['_domain_cylinder_radius']
+        self.focal_error = state['focal_error']
+        self.shell_distance_error = state['shell_distance_error']
         self._post_init()
         
     @property

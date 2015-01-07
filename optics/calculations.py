@@ -3,9 +3,15 @@
 A bunch of functions for creating surfaces, casting rays, etc
 """
 
+import os
+import sys
 import time
 import math
 import itertools
+import threading
+import traceback
+import string
+import random
 
 import numpy
 import scipy.integrate
@@ -212,24 +218,44 @@ def find_scale_and_error_at_best_distance(reference_scales, principal_ray, scree
     print("Time: %s" % (time.time() - start_time))
     
     return scales[best_value]
-    
+
+#TODO: clean up this remote error handling stuff
+
+def random_string(N=16):
+    return ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(N))
+
+ERROR_SUFFIX = '.error'
+
 def explore_direction(optimization_normal, lower_bound, upper_bound, prev_scale, principal_ray, light_radius, angle_vec):
-    
-    num_iterations = 20
-    tolerance = 0.001
-    if optics.globals.LOW_QUALITY_MODE:
-        tolerance = 0.1
-    
-    results = {}
-    best_error_this_iteration = [float("inf")]
-    def f(x):
-        pixel_point = prev_scale.pixel_point + x * optimization_normal
-        #optics.utils.profile_line('find_scale_and_error_at_best_distance([prev_scale], principal_ray, pixel_point, light_radius, angle_vec, best_error_this_iteration)', globals(), locals())
-        scale, error = find_scale_and_error_at_best_distance([prev_scale], principal_ray, pixel_point, light_radius, angle_vec, best_error_this_iteration)
-        results[x] = (scale, error)
-        return error
-    best_value, best_error, err, num_calls = scipy.optimize.fminbound(f, lower_bound, upper_bound, maxfun=num_iterations, xtol=tolerance, full_output=True, disp=3)
-    return results[best_value]
+    try:
+        num_iterations = 20
+        tolerance = 0.001
+        if optics.globals.LOW_QUALITY_MODE:
+            tolerance = 0.1
+        
+        results = {}
+        best_error_this_iteration = [float("inf")]
+        def f(x):
+            pixel_point = prev_scale.pixel_point + x * optimization_normal
+            #optics.utils.profile_line('find_scale_and_error_at_best_distance([prev_scale], principal_ray, pixel_point, light_radius, angle_vec, best_error_this_iteration)', globals(), locals())
+            scale, error = find_scale_and_error_at_best_distance([prev_scale], principal_ray, pixel_point, light_radius, angle_vec, best_error_this_iteration)
+            results[x] = (scale, error)
+            return error
+        best_value, best_error, err, num_calls = scipy.optimize.fminbound(f, lower_bound, upper_bound, maxfun=num_iterations, xtol=tolerance, full_output=True, disp=3)
+        return results[best_value]
+    except Exception, e:
+        output = str(e) + '\n' + ''.join(traceback.format_exception(*sys.exc_info()))
+        with open(random_string() + ERROR_SUFFIX, 'wb') as out_file:
+            out_file.write(output)
+        raise Exception("Remote error")
+            
+def check_for_errors(error_directory='.'):
+    for f in os.listdir(error_directory):
+        abs_file = os.path.join(error_directory, f)
+        if os.path.isfile(abs_file) and str(f).endswith(ERROR_SUFFIX):
+            with open(abs_file, 'rb') as infile:
+                print infile.read()
+            os.remove(abs_file)
 
 #def optimize_scale_for_angle(optimization_normal, lower_bound, upper_bound, num_iterations, prev_scale, principal_ray, light_radius, angle_vec):
 #    
@@ -260,7 +286,7 @@ def create_screen_mesh(ordered_scales):
     right_arc = [p + Point3D(1.0, 0.0, 0.0) for p in arc]
     return optics.mesh.Mesh(mesh=optics.mesh.mesh_from_arcs([right_arc, arc, left_arc]))
     
-def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_normal, principal_ray):
+def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_normal, principal_ray, process_pool, stop_flag, on_new_scale):
     """
     Imagine a bunch of fish scales. Each represent a section of the shell, focused correctly for one pixel (eg, producing
     parallel rays heading towards the eye). By making a bunch of these, and adjusting the pixel locations so that they all line up,
@@ -287,7 +313,7 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     #create the first scale
     center_scale = make_scale(principal_ray, initial_shell_point, initial_screen_point, light_radius, AngleVector(0.0, 0.0), optics.globals.POLY_ORDER)
     center_scale.shell_distance_error = 0.0
-    scales = [center_scale]
+    #scales = [center_scale]
     
     #create another scale right above it for debugging the error function
     #shell_point = initial_shell_point + Point3D(0.0, 3.0, -1.0)
@@ -341,7 +367,7 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     #this defines the first arc that we are making (a vertical line along the middle)
     optimization_normal = -1.0 * normalize(numpy.cross(lateral_normal, screen_normal))
     
-    for direction in (1.0, -1.0):
+    def grow_in_direction(direction, new_scales):
         phi = 0.0
         prev_scale = center_scale
         while phi < final_phi:
@@ -351,20 +377,36 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
                 theta = 3.0 * math.pi / 2.0
             angle_vec = AngleVector(theta, phi)
             
+            if stop_flag.is_set():
+                return new_scales
+            
             #old function: used to optimize in multiple directions
             #TODO: put something like it back to have a curved screen
-            #scale, error = optimize_scale_for_angle(optimization_normal, lower_bound, upper_bound, num_iterations, prev_scale, principal_ray, light_radius, angle_vec)
-            scale, error = explore_direction(direction * optimization_normal, lower_bound, upper_bound, prev_scale, principal_ray, light_radius, angle_vec)
-            scales.append(scale)
+            #scale, error = optimize_scale_for_angle(optimization_normal, lower_bound, upper_bound, num_iterations, prev_scale, principal_ray, light_radius, angle_vec)            
+            #scale, error = explore_direction(direction * optimization_normal, lower_bound, upper_bound, prev_scale, principal_ray, light_radius, angle_vec)
+            result = process_pool.apply_async(explore_direction, [direction * optimization_normal, lower_bound, upper_bound, prev_scale, principal_ray, light_radius, angle_vec])
+            result.wait()
+            check_for_errors()
+            scale, error = result.get()
+            new_scales.append(scale)
+            on_new_scale(scale)
             prev_scale = scale
-            
+        return new_scales
+    
+    upward_arc = []
+    downward_arc = []
+    threads = [threading.Thread(target=grow_in_direction, args=args) for args in ((1.0, upward_arc), (-1.0, downward_arc))]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    
+    if stop_flag.is_set():
+        return []
+    
     #print out a little graph of the errors of the scales so we can get a sense
-    #NOTE: this shuffling is just so that the errors are printed in an intuitive order
-    num_scales = len(scales)
-    num_scales_in_arc = (num_scales - 1) / 2
-    lower_arc = scales[num_scales_in_arc+1:]
-    lower_arc.reverse()
-    ordered_scales = lower_arc + scales[:num_scales_in_arc+1]
+    downward_arc.reverse()
+    ordered_scales = downward_arc + [center_scale] + upward_arc
     print("theta  phi     dist_error   focal_error")
     for scale in ordered_scales:
         scale.ensure_mesh()
@@ -379,4 +421,4 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     #export the shape formed by the screen pixels as an STL
     create_screen_mesh(ordered_scales).export("screen.stl")
     
-    return scales
+    return ordered_scales

@@ -16,9 +16,13 @@ middle mouse roll to zoom
 shift + middle mouse to rotate the world
 """
 
+import threading
+import multiprocessing
+
+import pyximport
+
 #by installing this, we can automatically import .pyx files without having to set up some crazy build step.
 #nice and convenient
-import pyximport
 pyximport.install()
 
 #this is the one thing that is allowed to import *
@@ -26,24 +30,52 @@ from optics.base import *
 import optics.calculations
 import viewer.window
 
-def generate_surface(shell_point, screen_point, screen_normal, principal_ray):
-    blah
-    #clear all temporary data
-    #start the master thread and pass it the pool
+NUM_PROCESSES = 4
+
+master_thread = None
+process_pool = None
+stop_flag = threading.Event()
+
+def clear_temporary_data():
+    """
+    Use this space to delete everything in a temporary folder, tec
+    """
+    pass
+
+def generate_surface(shell_point, screen_point, screen_normal, principal_ray, on_done, on_new_scale):
+    global master_thread, process_pool, stop_flag
     
+    assert master_thread == None
+    assert process_pool == None
+    stop_flag.clear()
+    
+    clear_temporary_data()
+    
+    process_pool = multiprocessing.Pool(NUM_PROCESSES)
+    
+    def calculate():
+        scales = optics.calculations.create_surface_via_scales(shell_point, screen_point, screen_normal, principal_ray, process_pool, stop_flag, on_new_scale)
+        on_done(scales)
+    
+    master_thread = threading.Thread(target=calculate)
+    master_thread.start()
     
 def stop_generating_surface():
-    blah
-    #kill all worker processes
+    global master_thread, process_pool, stop_flag
+    
+    if master_thread != None:
+        stop_flag.set()
+        master_thread.join()
+        master_thread = None
+
+    if process_pool != None:
+        process_pool.terminate()
+        process_pool.join()
+        process_pool = None
 
 def main():
     frames_per_second = 23
-    win = viewer.window.Window(frames_per_second)
-    initial_shell_point = Point3D(0.0, 0.0, -60.0)
-    initial_screen_point = Point3D(0.0, 40.0, -20.0)
-    principal_ray = Point3D(0.0, 0.0, -1.0)
-    screen_normal = normalize(Point3D(0.0, -1.0, -1.0))
-    win.scales = optics.calculations.create_surface_via_scales(initial_shell_point, initial_screen_point, screen_normal, principal_ray)
+    win = viewer.window.Window(frames_per_second, generate_surface, stop_generating_surface)
     win.run()
 
 if __name__ == '__main__':
