@@ -56,9 +56,12 @@ def create_arc_helper(shell_point, screen_point, light_radius, arc_plane_normal,
             #define the simple line that reflects the primary ray
             #intersect that with the max and min rays from the eye
             #check the distance between those intersections and double it or something
-        t_step = 0.1
-        if optics.globals.LOW_QUALITY_MODE:
-            tolerance = 0.5
+        if optics.globals.QUALITY_MODE == optics.globals.ULTRA_LOW_QUALITY_MODE:
+            t_step = 0.1
+        elif optics.globals.QUALITY_MODE == optics.globals.LOW_QUALITY_MODE:
+            t_step = 0.1
+        else:
+            t_step = 0.1
         max_t = 5.0
         return numpy.arange(0.0, max_t, t_step)
     t_values = estimate_t_values()
@@ -71,7 +74,7 @@ def create_arc_helper(shell_point, screen_point, light_radius, arc_plane_normal,
     def g(point, t):
         return -1.0 * f(point, t)
     
-    if optics.globals.LOW_QUALITY_MODE:
+    if optics.globals.QUALITY_MODE != optics.globals.HIGH_QUALITY_MODE:
         numpy.concatenate((scipy.integrate.odeint(g, shell_point, t_values)[1:][::-1], half_arc))
         
     #combine them
@@ -195,9 +198,13 @@ def find_scale_and_error_at_best_distance(reference_scales, principal_ray, scree
     
     #seems pretty arbitrary, but honestly at that point the gains here are pretty marginal
     num_iterations = 20
-    tolerance = 0.001
-    if optics.globals.LOW_QUALITY_MODE:
+    if optics.globals.QUALITY_MODE == optics.globals.ULTRA_LOW_QUALITY_MODE:
+        tolerance = 0.5
+    elif optics.globals.QUALITY_MODE == optics.globals.LOW_QUALITY_MODE:
         tolerance = 0.1
+    else:
+        tolerance = 0.001
+        
     poly_order = optics.globals.POLY_ORDER
     
     angle_normal = angle_vector_to_vector(angle_vec, principal_ray)
@@ -230,9 +237,12 @@ ERROR_SUFFIX = '.error'
 def explore_direction(optimization_normal, lower_bound, upper_bound, prev_scale, principal_ray, light_radius, angle_vec):
     try:
         num_iterations = 20
-        tolerance = 0.001
-        if optics.globals.LOW_QUALITY_MODE:
+        if optics.globals.QUALITY_MODE == optics.globals.ULTRA_LOW_QUALITY_MODE:
+            tolerance = 0.5
+        elif optics.globals.QUALITY_MODE == optics.globals.LOW_QUALITY_MODE:
             tolerance = 0.1
+        else:
+            tolerance = 0.001
         
         results = {}
         best_error_this_iteration = [float("inf")]
@@ -300,7 +310,7 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     #based on the fact that your pupil is approximately this big
     #basically defines how big the region is that we are trying to put in focus with a given scale
     light_radius = 3.0
-    fov = 0.04#math.pi / 2.0
+    fov = math.pi / 2.0
     #per whole the screen. So 90 steps for a 90 degree total FOV would be one step per degree
     total_phi_steps = 90
     
