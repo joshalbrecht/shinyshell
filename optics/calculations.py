@@ -260,7 +260,7 @@ def create_screen_mesh(ordered_scales):
     right_arc = [p + Point3D(1.0, 0.0, 0.0) for p in arc]
     return optics.mesh.Mesh(mesh=optics.mesh.mesh_from_arcs([right_arc, arc, left_arc]))
     
-def create_surface_via_scales(initial_shell_point, initial_screen_point, optimization_normal, principal_ray):
+def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_normal, principal_ray):
     """
     Imagine a bunch of fish scales. Each represent a section of the shell, focused correctly for one pixel (eg, producing
     parallel rays heading towards the eye). By making a bunch of these, and adjusting the pixel locations so that they all line up,
@@ -336,6 +336,11 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, optimiz
     phi_step = 0.05
     final_phi = fov/2.0
     
+    #this is side to side motion
+    lateral_normal = normalize(numpy.cross(principal_ray, screen_normal))
+    #this defines the first arc that we are making (a vertical line along the middle)
+    optimization_normal = -1.0 * normalize(numpy.cross(lateral_normal, screen_normal))
+    
     for direction in (1.0, -1.0):
         phi = 0.0
         prev_scale = center_scale
@@ -345,11 +350,9 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, optimiz
             if direction < 0:
                 theta = 3.0 * math.pi / 2.0
             angle_vec = AngleVector(theta, phi)
-            #TODO: obviously this has to change in the general case
-            #optimization_normal = direction * numpy.cross(Point3D(1.0, 0.0, 0.0), normalize(prev_scale.shell_point - prev_scale.pixel_point))
-            #replaced with a parameter that we can tweak.
-            #2DHACK: Still needs to change in the general case
+            
             #old function: used to optimize in multiple directions
+            #TODO: put something like it back to have a curved screen
             #scale, error = optimize_scale_for_angle(optimization_normal, lower_bound, upper_bound, num_iterations, prev_scale, principal_ray, light_radius, angle_vec)
             scale, error = explore_direction(direction * optimization_normal, lower_bound, upper_bound, prev_scale, principal_ray, light_radius, angle_vec)
             scales.append(scale)
