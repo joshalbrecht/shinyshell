@@ -329,10 +329,11 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     
     lower_bound = 0.0
     #NOTE: is a hack / guestimate
-    upper_bound = 2.0 * light_radius
+    #upper_bound = 2.0 * light_radius
+    upper_bound = max_spacing
         
     phi_step = 0.05
-    final_phi = 0.000001#fov/2.0
+    final_phi = fov/2.0
     
     #this is side to side motion
     lateral_normal = normalize(numpy.cross(principal_ray, screen_normal))
