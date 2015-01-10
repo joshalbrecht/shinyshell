@@ -131,6 +131,30 @@ def make_scale(principal_ray, shell_point, screen_point, light_radius, angle_vec
         domain_cylinder_radius=light_radius
     )
     return scale
+
+#TODO: this arc creation should probably be parallelized. Trivially parallelizable
+#TODO: need a reasonable method for looking up the closest scales
+def create_averaged_surface(scales):
+    """
+    Working along x and y arcs, get the distance by intersecting with the relevant scales
+    """
+    
+    for y in range():
+        for x in range():
+            code
+        
+
+def new_calculate_error(scale, reference_scale, best_error_so_far):
+    """
+    In theory, the error we are trying to calculate is the maximal distance between the two scales (from any two points
+    that are actually in domain).
+    
+    Note that we also have a constraint that the reference scale should always be in front of the new scale, 
+    
+    In practice, we exploit the fact that reference scales are always more central
+    """
+    #look through all of the points to find the outermost (away from scale -> scale vector)
+    #do a few runs along a few vectors like that
     
 def calculate_error(scale, reference_scale, best_error_so_far):
     """
