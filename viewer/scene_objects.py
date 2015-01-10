@@ -93,7 +93,7 @@ class ReflectiveSurface(SceneObject):
         SceneObject.render(self)
         for segment in self.segments:
             segment.render()
-        
+
 class ShellSection(object):
     """
     :attr shell: the object representing the center of the shell

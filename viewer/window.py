@@ -11,6 +11,7 @@ import pyglet.window.key
 import pyglet.window.mouse
 import matplotlib.pyplot as plt
 import mpl_toolkits.mplot3d
+import PIL
 
 #this is the one thing that is allowed to import *
 from optics.base import *
@@ -176,6 +177,50 @@ class Window(pyglet.window.Window):
         
         OpenGL.GL.glEnd()
 
+    def _draw_face(self):
+        img = PIL.Image.open('./head_image.png')
+        img_data = numpy.array(list(img.getdata()), numpy.int8)
+        texture_id = OpenGL.GL.glGenTextures(1)
+        OpenGL.GL.glPixelStorei(OpenGL.GL.GL_UNPACK_ALIGNMENT, 1)
+        OpenGL.GL.glBindTexture(OpenGL.GL.GL_TEXTURE_2D, texture_id)        
+        OpenGL.GL.glTexParameterf(OpenGL.GL.GL_TEXTURE_2D, OpenGL.GL.GL_TEXTURE_WRAP_S, OpenGL.GL.GL_CLAMP)
+        OpenGL.GL.glTexParameterf(OpenGL.GL.GL_TEXTURE_2D, OpenGL.GL.GL_TEXTURE_WRAP_T, OpenGL.GL.GL_CLAMP)
+        OpenGL.GL.glTexParameterf(OpenGL.GL.GL_TEXTURE_2D, OpenGL.GL.GL_TEXTURE_MAG_FILTER, OpenGL.GL.GL_LINEAR)
+        OpenGL.GL.glTexParameterf(OpenGL.GL.GL_TEXTURE_2D, OpenGL.GL.GL_TEXTURE_MIN_FILTER, OpenGL.GL.GL_LINEAR)
+        OpenGL.GL.glTexImage2D(OpenGL.GL.GL_TEXTURE_2D, 0, OpenGL.GL.GL_RGB, img.size[0], img.size[1], 0,
+                               OpenGL.GL.GL_RGB, OpenGL.GL.GL_UNSIGNED_BYTE, img_data)
+
+        OpenGL.GL.glEnable(OpenGL.GL.GL_TEXTURE_2D)
+        OpenGL.GL.glBindTexture(OpenGL.GL.GL_TEXTURE_2D, texture_id)
+        OpenGL.GL.glBegin(OpenGL.GL.GL_TRIANGLES)
+
+        OpenGL.GL.glColor3f(1.0, 1.0, 1.0)
+
+        # 4px on image = 1mm
+        img_height = float(img.size[1])
+        img_width = 900.0
+        coord_height = img_height/4
+        coord_width = img_width/4
+
+        # image is drawn where 0,0 is top left corner
+        # make first triangle, top left half
+        OpenGL.GL.glTexCoord2f(0, 0)
+        OpenGL.GL.glVertex3f(0, 0, coord_width)
+        OpenGL.GL.glTexCoord2f(0, 1)
+        OpenGL.GL.glVertex3f(0, -coord_height, coord_width)        
+        OpenGL.GL.glTexCoord2f(img_width/img.size[0], 1)
+        OpenGL.GL.glVertex3f(0, -coord_height, 0)
+
+        # make second triangle, bottom right half
+        OpenGL.GL.glTexCoord2f(img_width/img.size[0], 0)
+        OpenGL.GL.glVertex3f(0, 0, 0)
+        OpenGL.GL.glTexCoord2f(0, 0)
+        OpenGL.GL.glVertex3f(0, 0, coord_width)
+        OpenGL.GL.glTexCoord2f(img_width/img.size[0], 1)
+        OpenGL.GL.glVertex3f(0, -coord_height, 0)
+        
+        OpenGL.GL.glEnd()        
+
     def render(self):
         
         self.clear()
@@ -187,6 +232,7 @@ class Window(pyglet.window.Window):
                   self.up_vector[0], self.up_vector[1], self.up_vector[2])
         
         self._draw_axis()
+        self._draw_face()
         
         for section in self.sections:
             section.render()
