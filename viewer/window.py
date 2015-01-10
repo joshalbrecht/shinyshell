@@ -61,7 +61,6 @@ class Window(pyglet.window.Window):
         screen_normal = normalize(self._screen_normal_point - self._screen_point)
         self._generate_surface(self._shell_point, self._screen_point, screen_normal, self._principal_ray, on_done, on_new_scale)
         
-    #TODO: someday can save and load sections as well perhaps, so we can resume after shutting down
     def create_initial_sections(self):
         """Initialize some semi-sensible sections"""
         self.sections = []

@@ -44,28 +44,9 @@ def create_arc_helper(shell_point, screen_point, light_radius, arc_plane_normal,
         derivative = normalize(numpy.cross(surface_normal, arc_plane_normal))
         return derivative
     
-    #TODO: probably worth doing finer steps along a smaller number of rungs so that they integrate better
-    
-    #TODO: this should really be based on light_radius...
-    
-    #estimate how long the piece of the shell will be (the one that is large enough to reflect all rays)
-    #overestimates will waste time, underestimates cause it to crash :-P
-    #note that we're doing this one half at a time
-    def estimate_t_values():
-        #TODO: make this faster if necessary by doing the following:
-            #define the simple line that reflects the primary ray
-            #intersect that with the max and min rays from the eye
-            #check the distance between those intersections and double it or something
-        if optics.globals.QUALITY_MODE == optics.globals.ULTRA_LOW_QUALITY_MODE:
-            t_step = 0.1
-        elif optics.globals.QUALITY_MODE == optics.globals.LOW_QUALITY_MODE:
-            t_step = 0.1
-        else:
-            t_step = 0.1
-        max_t = 5.0
-        return numpy.arange(0.0, max_t, t_step)
-    t_values = estimate_t_values()
-    every_nth = 10
+    t_step = 0.1
+    max_t = 1.1 * light_radius
+    t_values = numpy.arange(0.0, max_t, t_step)
 
     #use the vector field to define the exact shape of the surface (first half)
     half_arc = scipy.integrate.odeint(f, shell_point, t_values)
@@ -74,10 +55,8 @@ def create_arc_helper(shell_point, screen_point, light_radius, arc_plane_normal,
     def g(point, t):
         return -1.0 * f(point, t)
     
-    if optics.globals.QUALITY_MODE != optics.globals.HIGH_QUALITY_MODE:
-        numpy.concatenate((scipy.integrate.odeint(g, shell_point, t_values)[1:][::-1], half_arc))
-        
     #combine them
+    every_nth = 10
     return numpy.concatenate((scipy.integrate.odeint(g, shell_point, t_values)[::every_nth][1:][::-1], half_arc[::every_nth]))
 
 def polyfit2d(x, y, z, order=3):
@@ -166,7 +145,7 @@ def calculate_error(scale, reference_scale, best_error_so_far):
     points = reference_scale.points()
     for point in points:
         end = 2.0 * (point - start) + start
-        intersection_point, intersection_normal = scale.intersection_plus_normal(start, end)
+        intersection_point = scale.intersection(start, end)
         if intersection_point != None:
             num_hits += 1
             #print numpy.linalg.norm(intersection_point - point)
@@ -373,7 +352,7 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     upper_bound = 2.0 * light_radius
         
     phi_step = 0.05
-    final_phi = fov/2.0
+    final_phi = 0.000001#fov/2.0
     
     #this is side to side motion
     lateral_normal = normalize(numpy.cross(principal_ray, screen_normal))
@@ -413,7 +392,9 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
         thread.start()
         
     while True:
-        all_threads_done = [not t.is_alive() for t in threads]
+        all_threads_done = True not in [t.is_alive() for t in threads]
+        if all_threads_done:
+            break
     
         if stop_flag.is_set():
             return []

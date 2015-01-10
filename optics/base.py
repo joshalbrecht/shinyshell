@@ -115,8 +115,7 @@ def normalized_vector_angle(v1_u, v2_u):
             return numpy.pi
     return angle
 
-#TODO: rename starting with _, and change the others to not start with that
-def create_transform_matrix_from_rotations(rotations):
+def _create_transform_matrix_from_rotations(rotations):
     """
     Note: do not use this in new code
     
@@ -152,9 +151,9 @@ def angle_vector_to_vector(angle_vec, principal_ray):
     """
     Converts from a (phi, theta) pair to a normalized Point3D()
     """
-    phi_rot = create_transform_matrix_from_rotations((0,-angle_vec.phi,0))
+    phi_rot = _create_transform_matrix_from_rotations((0,-angle_vec.phi,0))
     ray = phi_rot.dot(principal_ray)
-    theta_rot = create_transform_matrix_from_rotations((0,0,angle_vec.theta))
+    theta_rot = _create_transform_matrix_from_rotations((0,0,angle_vec.theta))
     return theta_rot.dot(ray)
 
 def dist2(v, w):

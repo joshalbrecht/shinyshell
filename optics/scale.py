@@ -162,7 +162,6 @@ class PolyScale(object):
         Just makes an approximate mesh. For rendering mostly.
         """
         
-        #TODO: rename the mesh module. it's too generic of a name
         #make a mesh from those arcs
         base_mesh = optics.mesh.mesh_from_arcs(self._arcs())
         
@@ -171,21 +170,27 @@ class PolyScale(object):
         
         return optics.mesh.Mesh(trimmed_mesh)
 
-    #TODO: filter out things that do not collide within our domain
-    #TODO: make another function that only returns the intersection (for efficiency, since this is in the critical path)
     def intersection_plus_normal(self, start, end):
         """
-        Really the entire reason we switch to taylor poly instead. much better intersections hopefully...
+        Just like intersection, but returns the normal as well
         """
-        #translate start and end into local coordinates
         transformed_start = self._world_to_local(start)
         transformed_end = self._world_to_local(end)
-        #use the cython collision function to figure out where we collided
-        #TODO: unsure if we actually need to normalize...
         point = self._poly._intersection(transformed_start, normalize(transformed_end-transformed_start))
         if point == None:
             return None, None
         #calculate the normal as well
         normal = self._poly.normal(point)
         return self._local_to_world(point), self._local_to_world_rotation.dot(normal)
+    
+    def intersection(self, start, end):
+        """
+        Really the entire reason we switch to taylor poly instead. much better intersections hopefully...
+        """
+        transformed_start = self._world_to_local(start)
+        transformed_end = self._world_to_local(end)
+        point = self._poly._intersection(transformed_start, normalize(transformed_end-transformed_start))
+        if point == None:
+            return None
+        return self._local_to_world(point)
     

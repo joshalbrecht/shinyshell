@@ -134,7 +134,7 @@ from pyoptools.misc import cmisc
 from pyoptools.misc import pmisc
 import scipy.integrate
 
-from optics.base import Point3D, Point2D, normalize, normalized_vector_angle, get_arc_plane_normal, angle_vector_to_vector, AngleVector, create_transform_matrix_from_rotations
+from optics.base import Point3D, Point2D, normalize, normalized_vector_angle, get_arc_plane_normal, angle_vector_to_vector, AngleVector, _create_transform_matrix_from_rotations
 import optics.globals
 import optics.rotation_matrix
 import optics.mesh
@@ -167,7 +167,7 @@ class Screen(object):
     :attr position: the location of the center of the screen
     :type position: Point3D
     :attr rotations: (rx,ry,yz). Pretty dumb way of thinking about things but whatever.
-    see 'create_transform_matrix_from_rotations' for a description of the format
+    see '_create_transform_matrix_from_rotations' for a description of the format
     :type rotations: Point3D
     :attr size: the width and height of the screen
     :type size: Point2D
@@ -181,7 +181,7 @@ class Screen(object):
         self.size = size
         self.pixel_distribution = pixel_distribution
 
-        rot_mat = create_transform_matrix_from_rotations(self.rotations)
+        rot_mat = _create_transform_matrix_from_rotations(self.rotations)
 
         self.side_vector = rot_mat.dot(Point3D(1.0, 0.0, 0.0))
         self.up_vector = rot_mat.dot(Point3D(0.0, 1.0, 0.0))
@@ -293,7 +293,7 @@ def create_rays_from_screen(screen, fov):
             rotations.append((xangle, yangle, 0))
 
     for rot in rotations:
-        rot_mat = create_transform_matrix_from_rotations(rot)
+        rot_mat = _create_transform_matrix_from_rotations(rot)
         rays.append(Ray(screen.vision_ray_to_pixel(AngleVector(theta, phi)), dir=rot_mat.dot(screen.direction)))
 
     return rays
@@ -560,7 +560,7 @@ def create_rays_from_screen_center_2d(screen, fov):
         rotations.append((angle, 0, 0))
 
     for rot in rotations:
-        rot_mat = create_transform_matrix_from_rotations(rot)
+        rot_mat = _create_transform_matrix_from_rotations(rot)
         rays.append(Ray(screen.vision_ray_to_pixel(AngleVector(theta, phi)), dir=rot_mat.dot(screen.direction)))
     return rays
 
@@ -582,7 +582,7 @@ def create_rays_from_multiple_pixels_on_screen_2d(screen, fov):
 
     for theta, phi in pixel_list:
         for rot in rotations:
-            rot_mat = create_transform_matrix_from_rotations(rot)
+            rot_mat = __create_transform_matrix_from_rotations(rot)
             rays.append(Ray(screen.vision_ray_to_pixel(AngleVector(theta, phi)), dir=rot_mat.dot(screen.direction)))
     return rays
 
