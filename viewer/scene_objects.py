@@ -64,13 +64,24 @@ class SceneObject(object):
                     best_dist = dist
                     best_obj = obj
         return best_obj
-
-class ScreenPixel(SceneObject):
+    
+class MovablePoint(SceneObject):
     def render(self):
         SceneObject.render(self)
         OpenGL.GL.glBegin(OpenGL.GL.GL_POINTS)
         OpenGL.GL.glVertex3f(*self._pos)
         OpenGL.GL.glEnd()
+
+class ScreenStartingPoint(MovablePoint): pass
+class ScreenNormalPoint(MovablePoint): pass
+class ShellStartingPoint(MovablePoint):
+    @MovablePoint.pos.setter
+    def pos(self, value):
+        changed_value = Point3D(0.0, 0.0, value[2])
+        self._pos = changed_value
+        self.on_change()
+
+class ScreenPixel(MovablePoint): pass
 
 class ReflectiveSurface(SceneObject):
     def __init__(self, **kwargs):

@@ -37,36 +37,35 @@ class Window(pyglet.window.Window):
         self.num_rays = 3
         self.pupil_radius = 2.0
         self.sections = []
-        self.create_initial_sections()
         
         self.scales = []
         
         self._generate_surface = generate_surface
         self._stop_generating_surface = stop_generating_surface
         
-        self._shell_point = Point3D(0.0, 0.0, -60.0)
-        self._screen_point = Point3D(0.0, 40.0, -20.0)
+        #self._shell_point = Point3D(0.0, 0.0, -60.0)
+        #self._screen_point = Point3D(0.0, 40.0, -20.0)
         self._principal_ray = Point3D(0.0, 0.0, -1.0)
-        self._screen_normal_point = self._screen_point + normalize(Point3D(0.0, -1.0, -1.0))
+        #self._screen_normal_point = self._screen_point + normalize(Point3D(0.0, -1.0, -1.0))
         
-        self.on_initial_parameter_change()
+        self._shell_point = viewer.scene_objects.ShellStartingPoint(pos=Point3D(0.0, 0.0, -60.0), color=(1.0, 0.0, 0.0), change_handler=self.on_initial_parameter_change)
+        self._screen_point = viewer.scene_objects.ScreenStartingPoint(pos=Point3D(0.0, 40.0, -20.0), color=(1.0, 0.0, 0.0), change_handler=self.on_initial_parameter_change)
+        self._screen_normal_point = viewer.scene_objects.ScreenNormalPoint(pos=self._screen_point.pos + normalize(Point3D(0.0, -1.0, -1.0)), color=(1.0, 0.0, 0.0), change_handler=self.on_initial_parameter_change)
+        
+        self.on_done_moving_things()
         
     def on_initial_parameter_change(self):
+        pass
+        
+    def on_done_moving_things(self):
         def on_done(scales):
             self.scales = scales
         def on_new_scale(scale):
             self.scales.append(scale)
         self.scales = []
         self._stop_generating_surface()
-        screen_normal = normalize(self._screen_normal_point - self._screen_point)
-        self._generate_surface(self._shell_point, self._screen_point, screen_normal, self._principal_ray, on_done, on_new_scale)
-        
-    def create_initial_sections(self):
-        """Initialize some semi-sensible sections"""
-        self.sections = []
-        self.sections.append(viewer.scene_objects.ShellSection(Point3D(0.0, 10.0, -70.0), Point3D(0.0, 40.0, -20.0), self.num_rays, self.pupil_radius))
-        #self.sections.append(viewer.scene_objects.ShellSection(Point3D(0.0, 0.0, -60.0), Point3D(0.0, 40.0, -20.0), self.num_rays, self.pupil_radius))
-        self.sections.append(viewer.scene_objects.ShellSection(Point3D(0.0, -5.0, -50.0), Point3D(0.0, 40.0, -20.0), self.num_rays, self.pupil_radius))
+        screen_normal = normalize(self._screen_normal_point.pos - self._screen_point.pos)
+        self._generate_surface(self._shell_point.pos, self._screen_point.pos, screen_normal, self._principal_ray, on_done, on_new_scale)
 
     def on_draw(self):
         self.render()
@@ -137,6 +136,7 @@ class Window(pyglet.window.Window):
     def on_mouse_release(self, x, y, button, modifiers):
         if button == pyglet.window.mouse.LEFT:
             self.left_click = None
+            self.on_done_moving_things()
         elif button == pyglet.window.mouse.MIDDLE:
             self.middle_click = None
             
