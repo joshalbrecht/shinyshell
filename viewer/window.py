@@ -50,7 +50,7 @@ class Window(pyglet.window.Window):
         
         self._shell_point = viewer.scene_objects.ShellStartingPoint(pos=Point3D(0.0, 0.0, -60.0), color=(1.0, 0.0, 0.0), change_handler=self.on_initial_parameter_change)
         self._screen_point = viewer.scene_objects.ScreenStartingPoint(pos=Point3D(0.0, 40.0, -20.0), color=(1.0, 0.0, 0.0), change_handler=self.on_initial_parameter_change)
-        self._screen_normal_point = viewer.scene_objects.ScreenNormalPoint(pos=self._screen_point.pos + normalize(Point3D(0.0, -1.0, -1.0)), color=(1.0, 0.0, 0.0), change_handler=self.on_initial_parameter_change)
+        self._screen_normal_point = viewer.scene_objects.ScreenNormalPoint(pos=self._screen_point.pos + 10.0*normalize(Point3D(0.0, -1.0, -1.0)), color=(1.0, 0.0, 0.0), change_handler=self.on_initial_parameter_change)
         
         self.on_done_moving_things()
         
@@ -193,6 +193,10 @@ class Window(pyglet.window.Window):
             
         for scale in self.scales:
             scale.render()
+            
+        self._shell_point.render()
+        self._screen_point.render()
+        self._screen_normal_point.render()
         
         if time.time() - self.last >= 1:
             self.framerate.text = str(self.frames)

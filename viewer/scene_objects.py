@@ -68,6 +68,7 @@ class SceneObject(object):
 class MovablePoint(SceneObject):
     def render(self):
         SceneObject.render(self)
+        OpenGL.GL.glPointSize(5.0);
         OpenGL.GL.glBegin(OpenGL.GL.GL_POINTS)
         OpenGL.GL.glVertex3f(*self._pos)
         OpenGL.GL.glEnd()
