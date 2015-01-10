@@ -10,9 +10,9 @@ LOW_QUALITY_MODE = 1
 #this should be sort of the default for the actual surface
 HIGH_QUALITY_MODE = 2
 
-#QUALITY_MODE = ULTRA_LOW_QUALITY_MODE
+QUALITY_MODE = ULTRA_LOW_QUALITY_MODE
 #QUALITY_MODE = LOW_QUALITY_MODE
-QUALITY_MODE = HIGH_QUALITY_MODE
+#QUALITY_MODE = HIGH_QUALITY_MODE
 
 #what order for taylor poly approximations. higher is better quality but slower
 POLY_ORDER = 3

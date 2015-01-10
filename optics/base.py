@@ -3,6 +3,8 @@
 Shared code between main.py and interface.py.
 """
 
+import random
+import string
 import math
 import collections
 
@@ -77,6 +79,9 @@ class VisibleLineSegment(Ray):
 class LightRay(VisibleLineSegment):
     def __init__(self, start, end):
         VisibleLineSegment.__init__(self, start, end, color=(0.5, 0.5, 0.5))
+        
+def random_string(N=16):
+    return ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(N))
 
 def get_arc_plane_normal(principal_ray, is_horizontal):
     """

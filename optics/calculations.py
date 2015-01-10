@@ -22,6 +22,7 @@ import scipy.optimize
 from optics.base import *
 import optics.globals
 import optics.utils
+import optics.parallel
 import optics.scale
 import optics.taylor_poly
 
@@ -206,46 +207,25 @@ def find_scale_and_error_at_best_distance(reference_scales, principal_ray, scree
     
     return scales[best_value]
 
-#TODO: clean up this remote error handling stuff
-
-def random_string(N=16):
-    return ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(N))
-
-ERROR_SUFFIX = '.error'
-
 def explore_direction(optimization_normal, lower_bound, upper_bound, prev_scale, principal_ray, light_radius, angle_vec):
-    try:
-        num_iterations = 20
-        if optics.globals.QUALITY_MODE == optics.globals.ULTRA_LOW_QUALITY_MODE:
-            tolerance = 0.5
-        elif optics.globals.QUALITY_MODE == optics.globals.LOW_QUALITY_MODE:
-            tolerance = 0.1
-        else:
-            tolerance = 0.001
-        
-        results = {}
-        best_error_this_iteration = [float("inf")]
-        def f(x):
-            pixel_point = prev_scale.pixel_point + x * optimization_normal
-            #optics.utils.profile_line('find_scale_and_error_at_best_distance([prev_scale], principal_ray, pixel_point, light_radius, angle_vec, best_error_this_iteration)', globals(), locals())
-            scale, error = find_scale_and_error_at_best_distance([prev_scale], principal_ray, pixel_point, light_radius, angle_vec, best_error_this_iteration)
-            results[x] = (scale, error)
-            return error
-        best_value, best_error, err, num_calls = scipy.optimize.fminbound(f, lower_bound, upper_bound, maxfun=num_iterations, xtol=tolerance, full_output=True, disp=3)
-        return results[best_value]
-    except Exception, e:
-        output = str(e) + '\n' + ''.join(traceback.format_exception(*sys.exc_info()))
-        with open(random_string() + ERROR_SUFFIX, 'wb') as out_file:
-            out_file.write(output)
-        raise Exception("Remote error")
-            
-def check_for_errors(error_directory='.'):
-    for f in os.listdir(error_directory):
-        abs_file = os.path.join(error_directory, f)
-        if os.path.isfile(abs_file) and str(f).endswith(ERROR_SUFFIX):
-            with open(abs_file, 'rb') as infile:
-                print infile.read()
-            os.remove(abs_file)
+    num_iterations = 20
+    if optics.globals.QUALITY_MODE == optics.globals.ULTRA_LOW_QUALITY_MODE:
+        tolerance = 0.5
+    elif optics.globals.QUALITY_MODE == optics.globals.LOW_QUALITY_MODE:
+        tolerance = 0.1
+    else:
+        tolerance = 0.001
+    
+    results = {}
+    best_error_this_iteration = [float("inf")]
+    def f(x):
+        pixel_point = prev_scale.pixel_point + x * optimization_normal
+        #optics.utils.profile_line('find_scale_and_error_at_best_distance([prev_scale], principal_ray, pixel_point, light_radius, angle_vec, best_error_this_iteration)', globals(), locals())
+        scale, error = find_scale_and_error_at_best_distance([prev_scale], principal_ray, pixel_point, light_radius, angle_vec, best_error_this_iteration)
+        results[x] = (scale, error)
+        return error
+    best_value, best_error, err, num_calls = scipy.optimize.fminbound(f, lower_bound, upper_bound, maxfun=num_iterations, xtol=tolerance, full_output=True, disp=3)
+    return results[best_value]
 
 #def optimize_scale_for_angle(optimization_normal, lower_bound, upper_bound, num_iterations, prev_scale, principal_ray, light_radius, angle_vec):
 #    
@@ -376,10 +356,7 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
             #TODO: put something like it back to have a curved screen
             #scale, error = optimize_scale_for_angle(optimization_normal, lower_bound, upper_bound, num_iterations, prev_scale, principal_ray, light_radius, angle_vec)            
             #scale, error = explore_direction(direction * optimization_normal, lower_bound, upper_bound, prev_scale, principal_ray, light_radius, angle_vec)
-            result = process_pool.apply_async(explore_direction, [direction * optimization_normal, lower_bound, upper_bound, prev_scale, principal_ray, light_radius, angle_vec])
-            result.wait()
-            check_for_errors()
-            scale, error = result.get()
+            scale, error = optics.parallel.call_via_pool(process_pool, explore_direction, [direction * optimization_normal, lower_bound, upper_bound, prev_scale, principal_ray, light_radius, angle_vec])
             new_scales.append(scale)
             on_new_scale(scale)
             prev_scale = scale
