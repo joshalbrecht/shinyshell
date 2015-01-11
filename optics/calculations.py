@@ -464,7 +464,7 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     #upper_bound = max_spacing
         
     phi_step = 0.05
-    final_phi = fov/2.0
+    final_phi = 0.001#fov/2.0
     
     #this is side to side motion
     lateral_normal = normalize(numpy.cross(principal_ray, screen_normal))
@@ -522,6 +522,10 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
         scale._calculate_rays()
         print("%.2f   %.2f    %.5f      %.5f" % (scale.angle_vec.theta, scale.angle_vec.phi, scale.shell_distance_error, scale.focal_error))
         
+    #a bit of a hack so we can visualize the real error:
+    center_scale.adjacent_scale = upward_arc[0]
+    center_scale.screen_normal = screen_normal
+        
     #export all of the scales as one massive STL
     meshes = [x._mesh for x in ordered_scales]
     merged_mesh = optics.mesh.merge_meshes(meshes)
@@ -531,3 +535,4 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     create_screen_mesh(ordered_scales).export("screen.stl")
     
     return ordered_scales
+    

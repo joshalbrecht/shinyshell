@@ -29,7 +29,7 @@ class PolyScale(object):
         self._domain_cylinder_point = domain_cylinder_point
         self._domain_cylinder_radius = domain_cylinder_radius
         
-        self.focal_error = None
+        self.focal_error = -1.0
         self.shell_distance_error = None
         
         self._post_init()
@@ -47,6 +47,9 @@ class PolyScale(object):
         self._rays = None
         self._points = None
         self._mesh = None
+        
+        #hacks:
+        self.adjacent_scale = None
         
     def __getstate__(self):
         state = {}
@@ -119,40 +122,112 @@ class PolyScale(object):
         if self._rays == None:
             self._calculate_rays()
         
-        for ray in self._rays:
-            ray.render()
+        if self._rays != None:
+            for ray in self._rays:
+                ray.render()
+                
+    #TODO: interpolate between them in some way?
+    def _get_best_shell_and_screen_point_from_ray(self, ray):
+        """
+        for now, we simply use whichever of the intersections that is closer (between self and adjacent_scale)
+        """
+        self_shell, self_screen = self._get_shell_and_screen_point_from_ray(ray)
+        adj_shell, adj_screen = self.adjacent_scale._get_shell_and_screen_point_from_ray(ray)
+        if self_shell == None:
+            return adj_shell, adj_screen
+        if adj_shell == None:
+            return self_shell, self_screen
+        if numpy.dot(self_shell, self_shell) < numpy.dot(adj_shell, adj_shell):
+            return self_shell, self_screen
+        return adj_shell, adj_screen
+        
+    def _get_shell_and_screen_point_from_ray(self, ray):
+        """
+        :returns: the position on the shell and screen where this ray would land, or None, None if it would not hit the scale
+        """
+        reflection_length = 1.1 * numpy.linalg.norm(self.shell_point - self.pixel_point)
+        intersection, normal = self.intersection_plus_normal(ray.start, ray.end)
+        if intersection == None:
+            return None, None
+        reverse_ray_direction = normalize(ray.start - ray.end)
+        midpoint = closestPointOnLine(reverse_ray_direction, Point3D(0.0, 0.0, 0.0), normal)
+        reflection_direction = (2.0 * (midpoint - reverse_ray_direction)) + reverse_ray_direction
+        ray_to_screen = Ray(intersection, intersection + reflection_length * reflection_direction)
+        plane_intersection = self.screen_plane.intersect_line(ray_to_screen.start, ray_to_screen.end)
+        return intersection, plane_intersection
             
     def _calculate_rays(self):
-        infinite_rays = []
-        base_eye_ray = Ray(Point3D(0,0,0), 100.0 * self._shell_point)
-        if self._num_rays == 1:
-            infinite_rays.append(base_eye_ray)
-        else:
+        if self.adjacent_scale == None:
+            return
+        
+        self._rays = []
+        
+        screen_plane = Plane(self._pixel_point, self.screen_normal)
+        self.screen_plane = screen_plane
+        self.adjacent_scale.screen_plane = screen_plane
+        
+        #make a vector between the two scales and split into a few different pieces
+        num_primary_rays = 5
+        end_point_vector = self.adjacent_scale.shell_point - self.shell_point
+        end_point_vector_length = numpy.linalg.norm(end_point_vector)
+        end_point_normal = end_point_vector / end_point_vector_length
+        end_point_distances = numpy.linspace(0, end_point_vector_length, num_primary_rays)
+        end_points = [dist * end_point_normal + self.shell_point for dist in end_point_distances]
+        
+        #calculate reflections for all bundles of rays centered around the end points
+        for end_point in end_points:
+            #figure out where that ray would end up on the screen. that is the pixel point for this bundle of rays
+            primary_ray = Ray(Point3D(0.0, 0.0, 0.0), end_point * 2.0)
+            primary_shell_collision, primary_screen_collision = self._get_best_shell_and_screen_point_from_ray(primary_ray)
+            #self._rays.append(LightRay(Point3D(0.0, 0.0, 0.0), primary_shell_collision))
+            #self._rays.append(LightRay(primary_shell_collision, primary_screen_collision))
+            
+            #make the bundle of rays, and reflect them all on to the screen
+            ray_end = primary_shell_collision
+            cumulative_distance = 0.0
+            num_collisions = 0
             for y in numpy.linspace(-self._pupil_radius, self._pupil_radius, num=self._num_rays):
                 delta = Point3D(0, y, 0)
-                infinite_rays.append(Ray(base_eye_ray.start + delta, base_eye_ray.end+delta))
+                ray = Ray(delta, ray_end + delta)
+                shell_collision, screen_collision = self._get_best_shell_and_screen_point_from_ray(ray)
+                if shell_collision != None:
+                    self._rays.append(LightRay(delta, shell_collision))
+                    self._rays.append(LightRay(shell_collision, screen_collision))
+                    cumulative_distance += numpy.linalg.norm(primary_screen_collision - screen_collision)
+                    num_collisions += 1
+            #TODO: calculate MTF instead
+            print(cumulative_distance / num_collisions)
         
-        #just want to see how close we're getting to the correct pixel location:
-        screen_plane = Plane(self._pixel_point, normalize(self.shell_point - self.pixel_point))
-        distance_from_center = 0.0
-        num_collisions = 0
-        
-        reflection_length = 1.1 * numpy.linalg.norm(self.shell_point - self.pixel_point)
-        self._rays = []
-        for ray in infinite_rays:
-            intersection, normal = self.intersection_plus_normal(ray.start, ray.end)
-            if intersection != None:
-                self._rays.append(LightRay(ray.start, intersection))
-                reverse_ray_direction = normalize(ray.start - ray.end)
-                midpoint = closestPointOnLine(reverse_ray_direction, Point3D(0.0, 0.0, 0.0), normal)
-                reflection_direction = (2.0 * (midpoint - reverse_ray_direction)) + reverse_ray_direction
-                ray_to_screen = LightRay(intersection, intersection + reflection_length * reflection_direction)
-                self._rays.append(ray_to_screen)
-                
-                plane_intersection = screen_plane.intersect_line(ray_to_screen.start, ray_to_screen.end)
-                distance_from_center += numpy.linalg.norm(plane_intersection - self._pixel_point)
-                num_collisions += 1
-        self.focal_error = distance_from_center / num_collisions
+        #infinite_rays = []
+        #base_eye_ray = Ray(Point3D(0,0,0), 100.0 * self._shell_point)
+        #if self._num_rays == 1:
+        #    infinite_rays.append(base_eye_ray)
+        #else:
+        #    for y in numpy.linspace(-self._pupil_radius, self._pupil_radius, num=self._num_rays):
+        #        delta = Point3D(0, y, 0)
+        #        infinite_rays.append(Ray(base_eye_ray.start + delta, base_eye_ray.end+delta))
+        #
+        ##just want to see how close we're getting to the correct pixel location:
+        #screen_plane = Plane(self._pixel_point, normalize(self.shell_point - self.pixel_point))
+        #distance_from_center = 0.0
+        #num_collisions = 0
+        #
+        #reflection_length = 1.1 * numpy.linalg.norm(self.shell_point - self.pixel_point)
+        #self._rays = []
+        #for ray in infinite_rays:
+        #    intersection, normal = self.intersection_plus_normal(ray.start, ray.end)
+        #    if intersection != None:
+        #        self._rays.append(LightRay(ray.start, intersection))
+        #        reverse_ray_direction = normalize(ray.start - ray.end)
+        #        midpoint = closestPointOnLine(reverse_ray_direction, Point3D(0.0, 0.0, 0.0), normal)
+        #        reflection_direction = (2.0 * (midpoint - reverse_ray_direction)) + reverse_ray_direction
+        #        ray_to_screen = LightRay(intersection, intersection + reflection_length * reflection_direction)
+        #        self._rays.append(ray_to_screen)
+        #        
+        #        plane_intersection = screen_plane.intersect_line(ray_to_screen.start, ray_to_screen.end)
+        #        distance_from_center += numpy.linalg.norm(plane_intersection - self._pixel_point)
+        #        num_collisions += 1
+        #self.focal_error = distance_from_center / num_collisions
 
     def ensure_mesh(self):
         if self._mesh == None:
