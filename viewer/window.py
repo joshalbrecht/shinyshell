@@ -192,12 +192,11 @@ class Window(pyglet.window.Window):
 
         OpenGL.GL.glEnable(OpenGL.GL.GL_TEXTURE_2D)
         OpenGL.GL.glBindTexture(OpenGL.GL.GL_TEXTURE_2D, texture_id)
-        
-        OpenGL.GL.glPushMatrix()
-        OpenGL.GL.glTranslatef(0.0, 100.0, 0.0)
-        
-        OpenGL.GL.glBegin(OpenGL.GL.GL_TRIANGLES)
 
+        OpenGL.GL.glPushMatrix()
+        OpenGL.GL.glTranslatef(0, 0.5, -0.5)
+
+        OpenGL.GL.glBegin(OpenGL.GL.GL_TRIANGLES)
         OpenGL.GL.glColor3f(1.0, 1.0, 1.0)
 
         # 4px on image = 1mm
