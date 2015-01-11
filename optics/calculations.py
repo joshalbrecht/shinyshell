@@ -143,18 +143,115 @@ def create_averaged_surface(scales):
         for x in range():
             code
         
-
+#TODO: this method for calculating scale error is not EXTREMELY accurate.
+#It's not bad, it's just that we're taking a relatively small number of samples,
+#and not necessarily the ones closest to the edge of the scale
+#could easily augment this by taking more samples near the edge, even if they didn't impact
+#the other constraint about which scale was closer
 def new_calculate_error(scale, reference_scale, best_error_so_far):
     """
     In theory, the error we are trying to calculate is the maximal distance between the two scales (from any two points
     that are actually in domain).
     
-    Note that we also have a constraint that the reference scale should always be in front of the new scale, 
+    In practice, we are exploiting a few known facts about the reference scale (like that it is more central and reasonably close
+    and symmetrical and partially overlapping)
     
-    In practice, we exploit the fact that reference scales are always more central
+    Note that we also have a constraint about the way in which the reference and scale should overlap. Basically, we do not want
+    discontinuities, so we ensure that as soon as the new scale is closer to the eye than the reference, it has to stay that way.
+    Thus as you work outward from the center, there will not usually be any points where the scales are overlapping in a way
+    that makes discontinuities.
+    
+    Given all of that, our general approach is to look for the scale points that are farthest from the scale -> reference scale line.
+    These points define the maximal angle that we need to consider. For a few angles inbetween those, simply look at the intersections
+    of that plane with both scales, ensuring that the above constraint is satisfied, and returning the largest distance
     """
-    #look through all of the points to find the outermost (away from scale -> scale vector)
-    #do a few runs along a few vectors like that
+    #find outermost points
+    scale_points = scale.points()
+    best_dist_sq = 0.0
+    best_point = None
+    for point in scale_points:
+        dist_sq = distToLineSquared(point, scale.shell_point, reference_scale.shell_point)
+        if dist_sq > best_dist_sq:
+            best_dist_sq = dist_sq
+            best_point = point
+            
+    #use that to define a few end points for rays that we will walk along, calculating distance
+    best_dist = math.sqrt(best_dist_sq)
+    nearest_point = closestPointOnLine(best_point, scale.shell_point, reference_scale.shell_point)
+    ray_end_normal = normalize(best_point - nearest_point)
+    #TODO: do we ever need more than this? Do we even need this?
+    num_rays = 3
+    distances = numpy.linspace(-best_dist, best_dist, num_rays+2)[1:-1]
+    #TODO: this will not work if we make the shell vary out of the obvious axis
+    if optics.globals.QUALITY_MODE == optics.globals.ULTRA_LOW_QUALITY_MODE:
+        distances = [0.0]
+    
+    end_points = [nearest_point + dist*ray_end_normal for dist in distances]
+    
+    #TODO: constants below are rather arbitrary, and unlinked to anything else. should probably be though through a bit more
+    
+    #for each ray, walk along calculating distances between the two scales at various points
+    #note that rays have to start really far away
+    ray_dist = 1000.0
+    start_point = ray_dist * -1.0 * normalize(nearest_point - reference_scale.shell_point) + scale.shell_point
+    #we want to start casting somewhere near where the scale could possibly overlap with the reference scale
+    fudge_factor = 1.05 #start a little ways away from the shell. who knows what would happen at the edge
+    starting_ray_distance = ray_dist - scale._poly.get_radius() * fudge_factor
+    #and we have to end within a reasonable amount (no need to go much farther than 2x the radius)
+    ending_ray_distance = ray_dist + scale._poly.get_radius() * fudge_factor
+    num_intersections_per_ray = 10 #sure, whatever, seems fine?
+    ray_distances = numpy.linspace(starting_ray_distance, ending_ray_distance, num_intersections_per_ray+2)[1:-1]
+    ray_start = Point3D(0.0, 0.0, 0.0) #all rays start from the eye
+    worst_error_this_iteration = 0.0
+    for end_point in end_points:
+        ray_normal = normalize(end_point - start_point)
+        hit_reference_already = False
+        hit_scale_first_already = False
+        for dist in ray_distances:
+            #actually perform the intersections
+            ray_end = 2.0 * (dist * ray_normal + start_point)
+            reference_intersection = reference_scale.intersection(ray_start, ray_end)
+            
+            #if we've ever hit the reference scale during this ray, and we didn't this time, break
+            if reference_intersection == None:
+                if hit_reference_already:
+                    break
+            else:
+                hit_reference_already = True
+            
+            #if we didn't hit both scales, continue
+            scale_intersection = scale.intersection(ray_start, ray_end)
+            if scale_intersection == None or reference_intersection == None:
+                continue
+            
+            #if our assumption is violated, return infinite error
+            reference_dist_sq = numpy.dot(reference_intersection, reference_intersection)
+            scale_dist_sq = numpy.dot(scale_intersection, scale_intersection)
+            if scale_dist_sq > reference_dist_sq:
+                if hit_scale_first_already:
+                    return float("inf")
+            else:
+                hit_scale_first_already = True
+
+            #update the error
+            dist = math.fabs(math.sqrt(reference_dist_sq) - math.sqrt(scale_dist_sq))
+            if dist > worst_error_this_iteration:
+                worst_error_this_iteration = dist
+                #if the distance is worse than the best error so far, return this error
+                if dist > best_error_so_far:
+                    return dist
+                
+    #NOTE: neither of these seems that important right now because this doesn't seem like it is the bottleneck
+    
+    #OPT: it might then be possible to look at my optimizations (calculate z instead of doing collisions)
+    #which could dramatically speed up the entire operation.
+    
+    #OPT: I wonder if converting this to cython could help at all...
+    #seems like it. let's save for the future: http://docs.cython.org/src/tutorial/numpy.html
+    #also before doing that, worth double checking in the profiler that the calculate_error function is the most time intensive
+    
+    return worst_error_this_iteration
+    
     
 def calculate_error(scale, reference_scale, best_error_so_far):
     """
@@ -189,7 +286,7 @@ def calculate_error(scale, reference_scale, best_error_so_far):
 def _get_scale_and_error_at_distance(distance, angle_normal, reference_scales, principal_ray, screen_point, light_radius, angle_vec, poly_order, best_error_so_far):
     shell_point = distance * angle_normal
     scale = make_scale(principal_ray, shell_point, screen_point, light_radius, angle_vec, poly_order)
-    error = max([calculate_error(scale, reference_scale, best_error_so_far) for reference_scale in reference_scales])
+    error = max([new_calculate_error(scale, reference_scale, best_error_so_far) for reference_scale in reference_scales])
     scale.shell_distance_error = error
     return scale, error
 
@@ -311,13 +408,23 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     
     on_new_scale(center_scale)
     
-    #create another scale right above it for debugging the error function
+    ##create another scale right above it for debugging the error function
+    ##shell_point = initial_shell_point + Point3D(0.0, 3.0, -1.0)#Point3D(0.0, 3.0, -1.0)
     #shell_point = initial_shell_point + Point3D(0.0, 3.0, -1.0)
     #angle_vec = AngleVector(math.pi/2.0, normalized_vector_angle(principal_ray, normalize(shell_point)))
-    #other_scale = make_scale(principal_ray, shell_point, initial_screen_point+Point3D(0.0, -min_pixel_spot_size, min_pixel_spot_size), light_radius, angle_vec)
-    #scales = [center_scale, other_scale]
-    
-    #calculate_error(other_scale, center_scale)
+    #other_scale = make_scale(principal_ray, shell_point, initial_screen_point+Point3D(0.0, -min_pixel_spot_size, min_pixel_spot_size), light_radius, angle_vec, optics.globals.POLY_ORDER)
+    ##other_scale = make_scale(principal_ray, shell_point, initial_screen_point+Point3D(0.0, -200.0, 0.0), light_radius, angle_vec, optics.globals.POLY_ORDER)
+    #ordered_scales = [center_scale, other_scale]
+    #
+    #start_time = time.time()
+    #old_error = calculate_error(other_scale, center_scale, float("inf"))
+    #end_time = time.time()
+    #print("old: %s error in %s" % (old_error, end_time - start_time))
+    #
+    #start_time = time.time()
+    #new_error = new_calculate_error(other_scale, center_scale, float("inf"))
+    #end_time = time.time()
+    #print("new: %s error in %s" % (new_error, end_time - start_time))
     
     #other_scale, error = find_scale_and_error_at_best_distance([center_scale], principal_ray,
     #    #initial_screen_point+Point3D(0.0, -10.0, 10.0), light_radius, angle_vec)
@@ -353,8 +460,8 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     
     lower_bound = 0.0
     #NOTE: is a hack / guestimate
-    #upper_bound = 2.0 * light_radius
-    upper_bound = max_spacing
+    upper_bound = 2.0 * light_radius
+    #upper_bound = max_spacing
         
     phi_step = 0.05
     final_phi = fov/2.0

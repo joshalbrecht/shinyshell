@@ -173,6 +173,9 @@ cdef class TaylorPoly(object):
     def __reduce__(self):
         return self.__class__, (self.cohef, self.domain_radius, self.domain_point)
         
+    def get_radius(self):
+        return self.domain_radius
+        
     cpdef in_domain(self, p):
         n = self.domain_point
         delta = p - (p.dot(n) * n)
