@@ -41,7 +41,8 @@ class Window(pyglet.window.Window):
         self.sections = []
         
         self.scales = []
-        
+
+        self._view_focal_error = False # toggles between focal error and shell distance error using "E" key
         self._generate_surface = generate_surface
         self._stop_generating_surface = stop_generating_surface
         
@@ -106,6 +107,12 @@ class Window(pyglet.window.Window):
                 delta = end_plane_location - start_plane_location
                 self.focal_point += -1.0 * delta
                 self.camera_point += -1.0 * delta
+
+    def on_key_release(self, symbol, modifiers):
+        if symbol == pyglet.window.key.E:
+            self._view_focal_error = not self._view_focal_error
+
+        print "Changed error mode to", "focal error" if self._view_focal_error else "shell distance error"
                 
     def _rotate(self, dx, dy):
         angle_step = 0.01
@@ -278,7 +285,7 @@ class Window(pyglet.window.Window):
         for section in self.sections:
             section.render()
             
-        self._set_scale_colors_by_quality()
+        self._set_scale_colors_by_quality(self._view_focal_error)
         for scale in self.scales:
             scale.render()
             
