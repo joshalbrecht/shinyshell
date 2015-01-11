@@ -20,7 +20,8 @@ import viewer.scene_objects
 
 class Window(pyglet.window.Window):
     def __init__(self, refreshrate, generate_surface, stop_generating_surface):
-        super(Window, self).__init__(vsync = False)
+        super(Window, self).__init__(vsync = False, resizable = True)
+        self.set_size(1400, 800)
         self.frames = 0
         self.framerate = pyglet.text.Label(text='Unknown', font_name='Verdana', font_size=8, x=10, y=10, color=(255,255,255,255))
         self.last = time.time()
@@ -31,7 +32,7 @@ class Window(pyglet.window.Window):
         
         self.selection = []
         self.zoom_multiplier = 1.2
-        self.focal_point = Point3D(0.0, 20.0, 30.0)
+        self.focal_point = Point3D(0.0, 20.0, -60.0)
         self.camera_point = Point3D(100.0, self.focal_point[1], self.focal_point[2])
         self.up_vector = Point3D(0.0, 1.0, 0.0)
         
@@ -193,17 +194,20 @@ class Window(pyglet.window.Window):
         OpenGL.GL.glEnable(OpenGL.GL.GL_TEXTURE_2D)
         OpenGL.GL.glBindTexture(OpenGL.GL.GL_TEXTURE_2D, texture_id)
 
+        # 1px on image = 1mm
+        scale_factor = 1
+        dist_from_eye_to_center = 12  # 12mm
+        img_height = float(img.size[1])
+        img_width = 0.5*float(img.size[0])
+        coord_height = img_height / scale_factor
+        coord_width = img_width / scale_factor
+        eye_loc = (186.0 / scale_factor, 134.0 / scale_factor)
+
         OpenGL.GL.glPushMatrix()
-        OpenGL.GL.glTranslatef(0, 0.5, -0.5)
+        OpenGL.GL.glTranslatef(0, eye_loc[1], eye_loc[0]-img_width-dist_from_eye_to_center)
 
         OpenGL.GL.glBegin(OpenGL.GL.GL_TRIANGLES)
         OpenGL.GL.glColor3f(1.0, 1.0, 1.0)
-
-        # 4px on image = 1mm
-        img_height = float(img.size[1])
-        img_width = 900.0
-        coord_height = img_height/4
-        coord_width = img_width/4
 
         # image is drawn where 0,0 is top left corner
         # make first triangle, top left half
