@@ -17,6 +17,7 @@ import PIL
 from optics.base import *
 import optics.rotation_matrix
 import viewer.scene_objects
+import optics.globals
 
 class Window(pyglet.window.Window):
     def __init__(self, refreshrate, generate_surface, stop_generating_surface):
@@ -110,9 +111,19 @@ class Window(pyglet.window.Window):
 
     def on_key_release(self, symbol, modifiers):
         if symbol == pyglet.window.key.E:
+            # E key toggles error used for shell coloration
             self._view_focal_error = not self._view_focal_error
-
-        print "Changed error mode to", "focal error" if self._view_focal_error else "shell distance error"
+            print "Changed error mode to", "focal error" if self._view_focal_error else "shell distance error"
+        elif symbol in (pyglet.window.key._1, pyglet.window.key._2, pyglet.window.key._3):
+            quality_mappings = {
+                pyglet.window.key._1: optics.globals.ULTRA_LOW_QUALITY_MODE,
+                pyglet.window.key._2: optics.globals.LOW_QUALITY_MODE,
+                pyglet.window.key._3: optics.globals.HIGH_QUALITY_MODE
+                }
+            optics.globals.QUALITY_MODE = quality_mappings[symbol]
+            print "Changed quality mode to", optics.globals.QUALITY_MODE
+            self.on_done_moving_things()
+            
                 
     def _rotate(self, dx, dy):
         angle_step = 0.01
