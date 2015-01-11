@@ -21,7 +21,7 @@ import viewer.scene_objects
 class Window(pyglet.window.Window):
     def __init__(self, refreshrate, generate_surface, stop_generating_surface):
         super(Window, self).__init__(vsync = False, resizable = True)
-        self.set_size(1400, 800)
+        self.set_size(1000, 600)
         self.frames = 0
         self.framerate = pyglet.text.Label(text='Unknown', font_name='Verdana', font_size=8, x=10, y=10, color=(255,255,255,255))
         self.last = time.time()
@@ -229,8 +229,41 @@ class Window(pyglet.window.Window):
         OpenGL.GL.glEnd()
         OpenGL.GL.glPopMatrix()
 
-    def render(self):
+
+    def _set_scale_colors_by_quality(self, focal_error=False):
+        """
+        Calculates and sets scale colors based on quality (i.e. focal and shell distance error)
+        """
+        errors = []
+        for scale in self.scales:
+            if focal_error and scale.focal_error != None:
+                errors.append(scale.focal_error)
+            elif not focal_error and scale.shell_distance_error != None:
+                errors.append(scale.shell_distance_error)
+
+        if len(errors) < 1:
+            return
+
+        min_error = min(errors)
+        max_error = max(errors)
+        error_diff = float(max_error) - float(min_error)
         
+        for scale in self.scales:
+            scale_error = 0
+            if focal_error and scale.focal_error != None:
+                scale_error = float(scale.focal_error)
+            elif not focal_error and scale.shell_distance_error != None:
+                scale_error = float(scale.shell_distance_error)
+
+            red = 1.0 if error_diff == 0 else 1.0 - (max_error - scale_error)/error_diff
+            green = 1.0 if error_diff == 0 else 1.0 - (scale_error - min_error)/error_diff
+            scale.set_scale_color((red, green, 0.0, 1.0))
+
+        print "Focal error (min, max)" if focal_error else "Shell distance error (min, max)"
+        print min_error, max_error
+
+            
+    def render(self):        
         self.clear()
         
         OpenGL.GL.glClear(OpenGL.GL.GL_COLOR_BUFFER_BIT)
@@ -245,6 +278,7 @@ class Window(pyglet.window.Window):
         for section in self.sections:
             section.render()
             
+        self._set_scale_colors_by_quality()
         for scale in self.scales:
             scale.render()
             

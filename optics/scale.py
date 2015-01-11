@@ -74,7 +74,7 @@ class PolyScale(object):
         self.focal_error = state['focal_error']
         self.shell_distance_error = state['shell_distance_error']
         self._post_init()
-        
+
     @property
     def shell_point(self):
         return self._shell_point
@@ -86,6 +86,13 @@ class PolyScale(object):
     @property
     def angle_vec(self):
         return self._angle_vec
+
+    def set_scale_color(self, color):
+        """
+        :attr color: 4-item tuple of RGBA values
+        """
+        if self._mesh != None:
+            self._mesh._color = color
     
     def points(self):
         if self._points == None:

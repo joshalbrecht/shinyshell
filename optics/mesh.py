@@ -159,6 +159,7 @@ class Mesh(object):
         
         self._mesh = mesh
         self._batch = None
+        self._color = (0.0, 1.0, 0.0, 1.0)
         
         #smooth_loop = vtk.vtkLoopSubdivisionFilter()
         #smooth_loop.SetNumberOfSubdivisions(3)
@@ -205,7 +206,7 @@ class Mesh(object):
                     b[0], b[1], b[2],
                     c[0], c[1], c[2]
                 )))
-        pyglet.gl.glColor3f(1.0, 1.0, 1.0)
+        pyglet.gl.glColor4f(self._color[0], self._color[1], self._color[2], self._color[3])
         pyglet.gl.glPolygonMode(pyglet.gl.GL_FRONT_AND_BACK, pyglet.gl.GL_LINE)
         self._batch.draw()
         pyglet.gl.glPolygonMode(pyglet.gl.GL_FRONT_AND_BACK, pyglet.gl.GL_FILL)

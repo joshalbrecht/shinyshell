@@ -85,6 +85,9 @@ class ShellStartingPoint(MovablePoint):
 class ScreenPixel(MovablePoint): pass
 
 class ReflectiveSurface(SceneObject):
+    """
+    :attr segments: VisibleLineSegments connecting shell points
+    """
     def __init__(self, **kwargs):
         SceneObject.__init__(self, **kwargs)
         self.segments = []
