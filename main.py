@@ -134,7 +134,7 @@ from pyoptools.misc import cmisc
 from pyoptools.misc import pmisc
 import scipy.integrate
 
-from optics.base import Point3D, Point2D, normalize, normalized_vector_angle, get_arc_plane_normal, angle_vector_to_vector, AngleVector, _create_transform_matrix_from_rotations
+from optics.base import Point3D, Point2D, normalize, normalized_vector_angle, get_arc_plane_normal, angle_vector_to_vector, AngleVector, _create_transform_matrix_from_rotations, get_theta_from_point
 import optics.globals
 import optics.rotation_matrix
 import optics.mesh
@@ -326,22 +326,6 @@ def create_rays(screen, fov):
         rays.append(Ray(pos=(0,0,0), dir=tup))
     return rays
 
-def _get_theta_from_point(principal_ray, h_arc_normal, v_arc_normal, point):
-    #project point onto the p=(0,0,0),n=principal_ray plane
-    dist = principal_ray.dot(point)
-    projected_point = point - principal_ray*dist
-    #normalize. if 0 length, return 0
-    length = numpy.linalg.norm(projected_point)
-    if length == 0.0:
-        return 0.0
-    normalized_point = projected_point / length
-    #measure angle between normalized projection and v_arc_normal
-    theta = normalized_vector_angle(normalized_point, v_arc_normal)
-    #if angle between normalized projection and h_arc_normal is > pi / 2.0, subtract angle from 2.0 * pi
-    if normalized_vector_angle(normalized_point, h_arc_normal) > math.pi / 2.0:
-        theta = math.pi * 2.0 - theta
-    return theta
-
 #TODO: this code with any non-(0,0,-1) principal ray is all untested. 
 def create_new_arc(screen, principal_ray, point0, is_horizontal=None):
     """
@@ -387,13 +371,13 @@ def create_new_arc(screen, principal_ray, point0, is_horizontal=None):
         # This section creates surface such that a ray from center of the eye hits the correct pixel on the screen
         eye_to_point_vec = normalize(point)
         phi = normalized_vector_angle(principal_ray, eye_to_point_vec)
-        theta = _get_theta_from_point(principal_ray, h_arc_normal, v_arc_normal, point)
+        theta = get_theta_from_point(principal_ray, h_arc_normal, v_arc_normal, point)
 
         # This section creates surface such that a cone of rays coming from a pixel on the screen is reflected in parallel rays toward the eye
         # Assumes that screen is tilted at correct angle such that ray coming from eye center hits screen at perpendicular angle
 #        eye_to_point_vec = normalize(point)
 #        phi = normalized_vector_angle(principal_ray, eye_to_point_vec)
-#        theta = _get_theta_from_point(principal_ray, h_arc_normal, v_arc_normal, point)
+#        theta = get_theta_from_point(principal_ray, h_arc_normal, v_arc_normal, point)
 #        phi, theta = find_center_given_phi_theta(phi, theta)
 #        eye_to_point_vec = angle_vector_to_vector(AngleVector(theta, phi), principal_ray)
         
@@ -659,7 +643,7 @@ def create_new_arc_2d(screen, principal_ray, point0, is_horizontal=None):
 #        eye_to_point_vec = Point3D(0, 0, -1)
         eye_to_point_vec = normalize(point)
         phi = normalized_vector_angle(principal_ray, eye_to_point_vec)
-        theta = _get_theta_from_point(principal_ray, h_arc_normal, v_arc_normal, point)
+        theta = get_theta_from_point(principal_ray, h_arc_normal, v_arc_normal, point)
         bucketed_phi, bucketed_theta = find_center_given_phi_theta(phi, theta)
         eye_to_point_vec = angle_vector_to_vector(AngleVector(bucketed_theta, bucketed_phi), principal_ray)
         

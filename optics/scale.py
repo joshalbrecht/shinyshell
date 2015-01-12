@@ -149,6 +149,33 @@ class PolyScale(object):
             for ray in self._rays:
                 ray.render()
                 
+    def _get_arc_and_start(self, ray_start, ray_direction, step_size):
+        """
+        walk along the ray, generating a bunch of points from the projection on to the scale
+        """
+        #transform the ray into scale coordinates
+        transformed_ray_start = self._world_to_local(ray_start)
+        transformed_ray_normal = self._world_to_local(ray_start + ray_direction) - transformed_ray_start
+        
+        #zero out the z portion of the ray and make a parameterized x/y line
+        projected_normal = normalize(Point3D(transformed_ray_normal[0], transformed_ray_normal[1], 0.0))
+        
+        #if the start is out of domain, whatever. calculate and return that as the start point with no arc
+        arc = []
+        z = self._poly.eval_poly(transformed_ray_start[0], transformed_ray_start[1])
+        point = (transformed_ray_start[0], transformed_ray_start[1], z)
+        if not self._poly.in_domain(point):
+            return self._local_to_world(point), arc
+        
+        #otherwise, continue along the ray until you are no longer in domain
+        while True:
+            point += step_size * projected_normal
+            point = Point3D(point[0], point[1], self._poly.eval_poly(point[0], point[1]))
+            if not self._poly.in_domain(point):
+                #start point is whatever point was the last one in the arc, basically
+                return arc[-1], arc
+            arc.append(self._local_to_world(point))
+        
     def _get_shell_and_screen_point_from_ray(self, ray, screen_plane):
         """
         :returns: the position on the shell and screen where this ray would land, or None, None if it would not hit the scale
@@ -163,6 +190,14 @@ class PolyScale(object):
         ray_to_screen = Ray(intersection, intersection + reflection_length * reflection_direction)
         plane_intersection = screen_plane.intersect_line(ray_to_screen.start, ray_to_screen.end)
         return intersection, plane_intersection
+    
+    def get_screen_points(self, rays, screen_plane):
+        points = []
+        for ray in rays:
+            plane_intersection = self. _get_shell_and_screen_point_from_ray(ray, screen_plane)[1]
+            if plane_intersection != None:
+                points.append(plane_intersection)
+        return points        
     
     def _calculate_rays(self):
         if self.adjacent_scale == None:

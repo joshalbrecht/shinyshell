@@ -120,6 +120,22 @@ def normalized_vector_angle(v1_u, v2_u):
             return numpy.pi
     return angle
 
+def get_theta_from_point(principal_ray, h_arc_normal, v_arc_normal, point):
+    #project point onto the p=(0,0,0),n=principal_ray plane
+    dist = principal_ray.dot(point)
+    projected_point = point - principal_ray*dist
+    #normalize. if 0 length, return 0
+    length = numpy.linalg.norm(projected_point)
+    if length == 0.0:
+        return 0.0
+    normalized_point = projected_point / length
+    #measure angle between normalized projection and v_arc_normal
+    theta = normalized_vector_angle(normalized_point, v_arc_normal)
+    #if angle between normalized projection and h_arc_normal is > pi / 2.0, subtract angle from 2.0 * pi
+    if normalized_vector_angle(normalized_point, h_arc_normal) > math.pi / 2.0:
+        theta = math.pi * 2.0 - theta
+    return theta
+
 def _create_transform_matrix_from_rotations(rotations):
     """
     Note: do not use this in new code

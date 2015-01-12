@@ -380,6 +380,132 @@ def find_scale_and_error_at_best_distance(reference_scales, principal_ray, scree
     
     return scales[best_value]
 
+def _generate_rays(end_point, light_radius, num_rays=11):
+    """make a bundle of rays"""
+    rays = []
+    ray_end = end_point * 2.0
+    for y in numpy.linspace(-light_radius, light_radius, num=num_rays):
+        delta = Point3D(0, y, 0)
+        ray = Ray(delta, ray_end + delta)
+        rays.append(ray)
+    return rays
+
+#TODO: might be good to grow with multiple prev scales, which would necessitate considering points from all of them when growing the new one
+#TODO: constrain the growth of the screen
+def new_explore_direction(screen_normal, prev_scale, principal_ray, light_radius, shell_growth_normal):
+    """
+    shell_growth_normal is roughly the direction that we want grow. Basically, the normal between the previous two scales.
+    """
+    #walk along a bunch of different arcs from -light_radius (out to the side) to +light_radius that travel in the growth direction
+    #each arc needs to have at least one point (find the farthest point, skip domain trimming if necessary)
+    #these arcs are the starting point for further growth below
+    step_size = 0.1
+    num_arcs = 1 + 2 * (int(light_radius / step_size) + 1)
+    arc_offsets = numpy.linspace(-light_radius, light_radius, num_arcs)
+    prev_shell_normal = normalize(prev_scale.pixel_point - prev_scale.shell_point)
+    arc_offset_normal = numpy.cross(shell_growth_normal, prev_shell_normal)
+    prev_scale_arcs = []
+    for offset in arc_offsets:
+        ray_start = offset * arc_offset_normal + prev_scale_arcs.shell_point
+        prev_scale_arcs.append(prev_scale_arcs._get_arc_and_start(ray_start, shell_growth_normal, step_size))
+    
+    #grab the primary growth ray (from the center of the previous scale in the direction we want to grow)
+    #cast a bunch of light rays at that point and reflect them from the shell on to the screen. the place where they focus will be our new screen point
+    shell_point, primary_arc = prev_scale_arcs[num_arcs / 2]
+    rays = _generate_rays(shell_point, light_radius)
+    screen_plane = Plane(prev_scale_arcs.pixel_point, screen_normal)
+    screen_points = prev_scale.get_screen_points(rays, screen_plane)
+    assert len(screen_points) > 0
+    screen_point = sum(screen_points) / len(screen_points)
+
+    #polyfit to make the taylor poly and return that new scale
+    scale = new_make_scale(principal_ray, shell_point, screen_point, light_radius, optics.globals.POLY_ORDER, prev_scale_arcs)
+    return scale
+    
+def new_make_scale(principal_ray, shell_point, screen_point, light_radius, poly_order, prev_arcs, arc_plane_normal, arc_offset_normal):
+    """
+    returns a non-trimmed scale patch based on the point (where the shell should be centered)
+    
+    note: poly_order=4 is very high quality. decrease to 2 or 3 for polynomials that are not as good at approximating, but much faster
+    """
+    
+    #calculate from shell_point
+    h_arc_normal = get_arc_plane_normal(principal_ray, True)
+    v_arc_normal = get_arc_plane_normal(principal_ray, False)
+    phi = normalized_vector_angle(principal_ray, normalize(shell_point))
+    theta = get_theta_from_point(principal_ray, h_arc_normal, v_arc_normal, shell_point)
+    angle_vec = AngleVector(theta, phi)
+    
+    #taylor polys like to live in f(x,y) -> z
+    #so build up the transformation so that the average of the shell -> screen vector and desired light vector is the z axis
+    #eg, so the 0,0,0 surface normal is the z axis
+    shell_to_screen_normal = normalize(screen_point - shell_point)
+    desired_light_dir = -1.0 * angle_vector_to_vector(angle_vec, principal_ray)
+    z_axis_world_dir = normalize(desired_light_dir + shell_to_screen_normal)
+    world_to_local_translation = -1.0 * shell_point
+    world_to_local_rotation = numpy.zeros((3, 3))
+    optics.rotation_matrix.R_2vect(world_to_local_rotation, z_axis_world_dir, Point3D(0.0, 0.0, 1.0))
+    
+    def translate_to_local(p):
+        return world_to_local_rotation.dot(p + world_to_local_translation)
+    
+    #convert everything into local coordinates
+    transformed_light_dir = world_to_local_rotation.dot(desired_light_dir)
+    #h_arc_plane_normal = get_arc_plane_normal(principal_ray, True)
+    #v_arc_plane_normal = get_arc_plane_normal(principal_ray, False)
+    #TODO: this feels a bit sketch-mode. is this right at all?
+    transformed_arc_plane_normal = world_to_local_rotation.dot(arc_plane_normal)
+    transformed_screen_point = translate_to_local(screen_point)
+    #transformed_shell_point = Point3D(0.0, 0.0, 0.0)
+    
+    #actually go calculate the points that we want to use to fit our polynomial
+    #use a large upper t bound to make sure we make it far enough
+    #TODO: 3.0 is totally arbitrary...
+    max_t = 3.0 * light_radius
+    t_values = numpy.arange(0.0, max_t, step_size)
+    every_nth = 10
+    #define a vector field to generate the exact shape of the surface
+    new_arcs = []
+    for start_point, prev_arc in prev_scale_arcs:
+        def f(point, t):
+            point_to_screen_vec = normalize(transformed_screen_point - point)
+            surface_normal = normalize(point_to_screen_vec + transformed_light_dir)
+            derivative = normalize(numpy.cross(surface_normal, arc_plane_normal))
+            return derivative
+        new_arc = scipy.integrate.odeint(f, translate_to_local(start_point), t_values)[::every_nth]
+        #take every nth (appropriately) from old arc
+        filtered_prev_arc = prev_arc[::-1][::every_nth][1:][::-1]
+        #transform them to local
+        transformed_prev_arc = [translate_to_local(p) for p in filtered_prev_arc]
+        full_arc = transformed_prev_arc + new_arc
+        #filter out any not in the new domain
+        final_arc = [p for p in full_arc if in_domain(p)]
+        new_arcs.append(final_arc)
+        
+    points = numpy.vstack(new_arcs)
+    #fit the polynomial to the points:
+    x = points[:, 0]
+    y = points[:, 1]
+    z = points[:, 2]
+    coefficients = polyfit2d(x, y, z, order=poly_order)
+    order = int(numpy.sqrt(len(coefficients)))
+    cohef = []
+    for i in range(0, order):
+        cohef.append(coefficients[i*order:(i+1)*order])
+    cohef = numpy.array(cohef).copy(order='C')
+    poly = optics.taylor_poly.TaylorPoly(cohef=cohef.T, domain_radius=light_radius, domain_point=translate_to_local(screen_point))
+    
+    scale = optics.scale.PolyScale(
+        shell_point=shell_point,
+        pixel_point=screen_point,
+        angle_vec=angle_vec,
+        poly=poly,
+        world_to_local_rotation=world_to_local_rotation,
+        world_to_local_translation=world_to_local_translation,
+        domain_cylinder_radius=light_radius
+    )
+    return scale
+
 def explore_direction(optimization_normal, lower_bound, upper_bound, prev_scale, principal_ray, light_radius, angle_vec):
     num_iterations = 20
     if optics.globals.QUALITY_MODE == optics.globals.ULTRA_LOW_QUALITY_MODE:
@@ -460,24 +586,24 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     #scales = [center_scale]
     
     on_new_scale(center_scale)
-    
-    #create another scale right above it for debugging the error function
-    #shell_point = initial_shell_point + Point3D(0.0, 3.0, -1.0)#Point3D(0.0, 3.0, -1.0)
-    shell_point = initial_shell_point + Point3D(0.0, 3.0, -1.0)
-    angle_vec = AngleVector(math.pi/2.0, normalized_vector_angle(principal_ray, normalize(shell_point)))
-    other_scale = make_scale(principal_ray, shell_point, initial_screen_point+Point3D(0.0, -min_pixel_spot_size, min_pixel_spot_size), light_radius, angle_vec, optics.globals.POLY_ORDER)
-    #other_scale = make_scale(principal_ray, shell_point, initial_screen_point+Point3D(0.0, -200.0, 0.0), light_radius, angle_vec, optics.globals.POLY_ORDER)
-    ordered_scales = [center_scale, other_scale]
-    
-    start_time = time.time()
-    old_error = calculate_error(other_scale, center_scale, float("inf"))
-    end_time = time.time()
-    print("old: %s error in %s" % (old_error, end_time - start_time))
-    
-    start_time = time.time()
-    new_error = even_newer_calculate_error(other_scale, center_scale, float("inf"))
-    end_time = time.time()
-    print("new: %s error in %s" % (new_error, end_time - start_time))
+
+    ##create another scale right above it for debugging the error function
+    ##shell_point = initial_shell_point + Point3D(0.0, 3.0, -1.0)#Point3D(0.0, 3.0, -1.0)
+    #shell_point = initial_shell_point + Point3D(0.0, 3.0, -1.0)
+    #angle_vec = AngleVector(math.pi/2.0, normalized_vector_angle(principal_ray, normalize(shell_point)))
+    #other_scale = make_scale(principal_ray, shell_point, initial_screen_point+Point3D(0.0, -min_pixel_spot_size, min_pixel_spot_size), light_radius, angle_vec, optics.globals.POLY_ORDER)
+    ##other_scale = make_scale(principal_ray, shell_point, initial_screen_point+Point3D(0.0, -200.0, 0.0), light_radius, angle_vec, optics.globals.POLY_ORDER)
+    #ordered_scales = [center_scale, other_scale]
+    #
+    #start_time = time.time()
+    #old_error = calculate_error(other_scale, center_scale, float("inf"))
+    #end_time = time.time()
+    #print("old: %s error in %s" % (old_error, end_time - start_time))
+    #
+    #start_time = time.time()
+    #new_error = even_newer_calculate_error(other_scale, center_scale, float("inf"))
+    #end_time = time.time()
+    #print("new: %s error in %s" % (new_error, end_time - start_time))
     
     #other_scale, error = find_scale_and_error_at_best_distance([center_scale], principal_ray,
     #    #initial_screen_point+Point3D(0.0, -10.0, 10.0), light_radius, angle_vec)
