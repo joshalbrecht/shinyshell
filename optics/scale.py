@@ -14,15 +14,21 @@ def get_best_shell_and_screen_point_from_ray(scale, adjacent_scale, ray, screen_
     self_shell, self_screen = scale._get_shell_and_screen_point_from_ray(ray, screen_plane)
     if self_shell != None:
         return self_shell, self_screen
-    #return None, None
+    
     adj_shell, adj_screen = adjacent_scale._get_shell_and_screen_point_from_ray(ray, screen_plane)
-    if self_shell == None:
+    if adj_shell != None:
         return adj_shell, adj_screen
-    if adj_shell == None:
-        return self_shell, self_screen
-    if numpy.dot(self_shell, self_shell) < numpy.dot(adj_shell, adj_shell):
-        return self_shell, self_screen
-    return adj_shell, adj_screen
+    
+    return None, None
+
+    #adj_shell, adj_screen = adjacent_scale._get_shell_and_screen_point_from_ray(ray, screen_plane)
+    #if self_shell == None:
+    #    return adj_shell, adj_screen
+    #if adj_shell == None:
+    #    return self_shell, self_screen
+    #if numpy.dot(self_shell, self_shell) < numpy.dot(adj_shell, adj_shell):
+    #    return self_shell, self_screen
+    #return adj_shell, adj_screen
 
 class PolyScale(object): 
     def __init__(   self,
@@ -57,7 +63,7 @@ class PolyScale(object):
     def _post_init(self):
         #arbitrary
         self._num_rays = 11
-        self._pupil_radius = 1.0
+        self._pupil_radius = 3.0
         
         #derived
         self._local_to_world_rotation = numpy.linalg.inv(self._world_to_local_rotation)
@@ -221,13 +227,13 @@ class PolyScale(object):
         #calculate reflections for all bundles of rays centered around the end points
         for end_point in end_points:
             #figure out where that ray would end up on the screen. that is the pixel point for this bundle of rays
+            ray_end = end_point * 2.0
             primary_ray = Ray(Point3D(0.0, 0.0, 0.0), end_point * 2.0)
             primary_shell_collision, primary_screen_collision = get_best_shell_and_screen_point_from_ray(self, self.adjacent_scale, primary_ray, screen_plane)
             #self._rays.append(LightRay(Point3D(0.0, 0.0, 0.0), primary_shell_collision))
             #self._rays.append(LightRay(primary_shell_collision, primary_screen_collision))
             
             #make the bundle of rays, and reflect them all on to the screen
-            ray_end = primary_shell_collision
             cumulative_distance = 0.0
             num_collisions = 0
             for y in numpy.linspace(-self._pupil_radius, self._pupil_radius, num=self._num_rays):
@@ -240,7 +246,10 @@ class PolyScale(object):
                     cumulative_distance += numpy.linalg.norm(primary_screen_collision - screen_collision)
                     num_collisions += 1
             #TODO: calculate MTF instead
-            print(cumulative_distance / num_collisions)
+            if num_collisions == 0:
+                print None
+            else:
+                print(cumulative_distance / num_collisions)
         
         #infinite_rays = []
         #base_eye_ray = Ray(Point3D(0,0,0), 100.0 * self._shell_point)
