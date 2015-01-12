@@ -54,7 +54,7 @@ class PolyScale(object):
     def _post_init(self):
         #arbitrary
         self._num_rays = 11
-        self._pupil_radius = 3.0
+        self._pupil_radius = 1.0
         
         #derived
         self._local_to_world_rotation = numpy.linalg.inv(self._world_to_local_rotation)
@@ -173,9 +173,9 @@ class PolyScale(object):
         screen_plane = Plane(self._pixel_point, self.screen_normal)
         
         #make a vector between the two scales and split into a few different pieces
-        num_primary_rays = 5
+        num_primary_rays = 7
         end_point_vector = self.adjacent_scale.shell_point - self.shell_point
-        end_point_vector_length = numpy.linalg.norm(end_point_vector)
+        end_point_vector_length = numpy.linalg.norm(end_point_vector) / 3.0
         end_point_normal = end_point_vector / end_point_vector_length
         end_point_distances = numpy.linspace(0, end_point_vector_length, num_primary_rays)
         end_points = [dist * end_point_normal + self.shell_point for dist in end_point_distances]
