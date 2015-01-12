@@ -7,6 +7,7 @@ import random
 import string
 import math
 import collections
+import inspect
 
 import numpy
 import OpenGL.GL
@@ -100,6 +101,7 @@ def get_arc_plane_normal(principal_ray, is_horizontal):
     return ray_rotation.dot(base_arc_ray)
 
 def normalize(a):
+    #print inspect.getframeinfo(inspect.currentframe().f_back)[2]
     return a / numpy.linalg.norm(a)
 
 def normalized_vector_angle(v1_u, v2_u):

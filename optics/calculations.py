@@ -473,12 +473,20 @@ def new_make_scale(principal_ray, shell_point, screen_point, light_radius, poly_
     every_nth = 10
     #define a vector field to generate the exact shape of the surface
     new_arcs = []
+    normer = numpy.linalg.norm
     for start_point, prev_arc in prev_arcs:
         def f(point, t):
-            point_to_screen_vec = normalize(transformed_screen_point - point)
-            surface_normal = normalize(point_to_screen_vec + transformed_light_dir)
-            derivative = normalize(numpy.cross(surface_normal, arc_plane_normal))
-            return derivative
+            #actual code:
+            #point_to_screen_vec = normalize(transformed_screen_point - point)
+            #surface_normal = normalize(point_to_screen_vec + transformed_light_dir)
+            #derivative = normalize(numpy.cross(surface_normal, arc_plane_normal))
+            #return derivative
+            
+            #optimizing, should be equivalent:
+            point_to_screen_vec = transformed_screen_point - point
+            surface_vec = point_to_screen_vec / normer(point_to_screen_vec) + transformed_light_dir
+            derivative = numpy.cross(surface_vec, arc_plane_normal)
+            return derivative / normer(derivative)
         new_arc = scipy.integrate.odeint(f, translate_to_local(start_point), t_values)[::every_nth]
         #take every nth (appropriately) from old arc
         filtered_prev_arc = prev_arc[::-1][::every_nth][1:][::-1]
@@ -729,6 +737,11 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     ##a bit of a hack so we can visualize the real error:
     #center_scale.adjacent_scale = scale
     #center_scale.screen_normal = screen_normal
+    
+    ##testing for optimization:
+    #optics.utils.profile_line('new_explore_direction(screen_normal, center_scale, principal_ray, light_radius, normalize(Point3D(0.0, 1.0, -1.0)))', globals(), locals())
+    #import sys
+    #sys.exit()
     
     def grow_in_direction(direction, new_scales):
         phi = 0.0
