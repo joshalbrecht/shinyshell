@@ -649,80 +649,88 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     upper_bound = 2.0 * light_radius
     #upper_bound = max_spacing
         
-    phi_step = 0.05
-    final_phi = 0.001#fov/2.0
+    #phi_step = 0.05
+    final_phi = fov/2.0
     
     #this is side to side motion
     lateral_normal = normalize(numpy.cross(principal_ray, screen_normal))
     #this defines the first arc that we are making (a vertical line along the middle)
     optimization_normal = -1.0 * normalize(numpy.cross(lateral_normal, screen_normal))
     
-    #testing out new growth function:
-    scale = new_explore_direction(screen_normal, center_scale, principal_ray, light_radius, normalize(Point3D(0.0, 1.0, -1.0)))
-    ordered_scales = [center_scale, scale]
-    for scale in ordered_scales:
-        scale.ensure_mesh()
-        
-    #a bit of a hack so we can visualize the real error:
-    center_scale.adjacent_scale = scale
-    center_scale.screen_normal = screen_normal
-    
-    #def grow_in_direction(direction, new_scales):
-    #    phi = 0.0
-    #    prev_scale = center_scale
-    #    while phi < final_phi:
-    #        phi += phi_step
-    #        theta = math.pi / 2.0
-    #        if direction < 0:
-    #            theta = 3.0 * math.pi / 2.0
-    #        angle_vec = AngleVector(theta, phi)
-    #        
-    #        if stop_flag.is_set():
-    #            return new_scales
-    #        
-    #        #old function: used to optimize in multiple directions
-    #        #TODO: put something like it back to have a curved screen
-    #        #scale, error = optimize_scale_for_angle(optimization_normal, lower_bound, upper_bound, num_iterations, prev_scale, principal_ray, light_radius, angle_vec)            
-    #        #scale, error = explore_direction(direction * optimization_normal, lower_bound, upper_bound, prev_scale, principal_ray, light_radius, angle_vec)
-    #        scale, error = optics.parallel.call_via_pool(process_pool, explore_direction, [direction * optimization_normal, lower_bound, upper_bound, prev_scale, principal_ray, light_radius, angle_vec])
-    #        #scale, error = explore_direction(direction * optimization_normal, lower_bound, upper_bound, prev_scale, principal_ray, light_radius, angle_vec)
-    #        scale.screen_normal = screen_normal
-    #        new_scales.append(scale)
-    #        on_new_scale(scale)
-    #        prev_scale = scale
-    #    return new_scales
-    #
-    #upward_arc = []
-    #downward_arc = []
-    #threads = [threading.Thread(target=grow_in_direction, args=args) for args in ((1.0, upward_arc), (-1.0, downward_arc))]
-    #for thread in threads:
-    #    thread.start()
-    #    
-    #while True:
-    #    all_threads_done = True not in [t.is_alive() for t in threads]
-    #    if all_threads_done:
-    #        break
-    #
-    #    if stop_flag.is_set():
-    #        return []
-    #    
-    #    time.sleep(0.1)
-    #    
-    #for thread in threads:
-    #    thread.join()
-    #
-    ##print out a little graph of the errors of the scales so we can get a sense
-    #downward_arc.reverse()
-    #ordered_scales = downward_arc + [center_scale] + upward_arc
-    #print("theta  phi     dist_error   focal_error")
+    ##testing out new growth function:
+    #scale = new_explore_direction(screen_normal, center_scale, principal_ray, light_radius, normalize(Point3D(0.0, 1.0, -1.0)))
+    #ordered_scales = [center_scale, scale]
     #for scale in ordered_scales:
     #    scale.ensure_mesh()
-    #    scale._calculate_rays()
-    #    print("%.2f   %.2f    %.5f      %.5f" % (scale.angle_vec.theta, scale.angle_vec.phi, scale.shell_distance_error, scale.focal_error))
     #    
     ##a bit of a hack so we can visualize the real error:
-    #center_scale.adjacent_scale = upward_arc[0]
+    #center_scale.adjacent_scale = scale
     #center_scale.screen_normal = screen_normal
+    
+    def grow_in_direction(direction, new_scales):
+        phi = 0.0
+        prev_scale = center_scale
+        while phi < final_phi:
+            #phi += phi_step
+            #theta = math.pi / 2.0
+            #if direction < 0:
+            #    theta = 3.0 * math.pi / 2.0
+            #angle_vec = AngleVector(theta, phi)
+            
+            if stop_flag.is_set():
+                return new_scales
+            
+            #old function: used to optimize in multiple directions
+            #TODO: put something like it back to have a curved screen
+            #scale, error = optimize_scale_for_angle(optimization_normal, lower_bound, upper_bound, num_iterations, prev_scale, principal_ray, light_radius, angle_vec)            
+            #scale, error = explore_direction(direction * optimization_normal, lower_bound, upper_bound, prev_scale, principal_ray, light_radius, angle_vec)
+            #scale, error = optics.parallel.call_via_pool(process_pool, explore_direction, [direction * optimization_normal, lower_bound, upper_bound, prev_scale, principal_ray, light_radius, angle_vec])
+            #scale, error = explore_direction(direction * optimization_normal, lower_bound, upper_bound, prev_scale, principal_ray, light_radius, angle_vec)
+            
+            start_time = time.time()
+            
+            scale = optics.parallel.call_via_pool(process_pool, new_explore_direction, [screen_normal, prev_scale, principal_ray, light_radius, direction*normalize(Point3D(0.0, 1.0, -1.0))])
+            
+            #TODO: move to a sane location?
+            scale.screen_normal = screen_normal
+            new_scales.append(scale)
+            on_new_scale(scale)
+            prev_scale = scale
+            phi = scale.angle_vec.phi
+            print("Finished phi = %.4f in %.3f" % (phi, time.time() - start_time))
+        return new_scales
+    
+    upward_arc = []
+    downward_arc = []
+    threads = [threading.Thread(target=grow_in_direction, args=args) for args in ((1.0, upward_arc), (-1.0, downward_arc))]
+    for thread in threads:
+        thread.start()
+        
+    while True:
+        all_threads_done = True not in [t.is_alive() for t in threads]
+        if all_threads_done:
+            break
+    
+        if stop_flag.is_set():
+            return []
+        
+        time.sleep(0.1)
+        
+    for thread in threads:
+        thread.join()
+    
+    #print out a little graph of the errors of the scales so we can get a sense
+    downward_arc.reverse()
+    ordered_scales = downward_arc + [center_scale] + upward_arc
+    print("theta  phi     focal_error")
+    for scale in ordered_scales:
+        scale.ensure_mesh()
+        #scale._calculate_rays()
+        print("%.2f   %.2f      %.5f" % (scale.angle_vec.theta, scale.angle_vec.phi, scale.focal_error))
+        
+    #a bit of a hack so we can visualize the real error:
+    center_scale.adjacent_scale = upward_arc[0]
+    center_scale.screen_normal = screen_normal
         
     #export all of the scales as one massive STL
     meshes = [x._mesh for x in ordered_scales]

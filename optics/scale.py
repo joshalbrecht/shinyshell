@@ -175,6 +175,7 @@ class PolyScale(object):
         point = Point3D(transformed_ray_start[0], transformed_ray_start[1], z)
         if not self._poly.in_domain(point):
             return self._local_to_world(point), arc
+        arc.append(self._local_to_world(point))
         
         #otherwise, continue along the ray until you are no longer in domain
         while True:
