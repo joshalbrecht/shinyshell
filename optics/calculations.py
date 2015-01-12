@@ -73,7 +73,7 @@ def polyfit2d(x, y, z, order=3):
 #but it's for efficiency reasons--matrix multiplying a bajillion points into the correct space is going to be way slower than just
 #making them in the correct coordinate system in the first place
 #really, should probably hide create_arc inside of PolyScale, but it's used elsewhere, so leaving it out for now
-def make_scale(principal_ray, shell_point, screen_point, light_radius, angle_vec, poly_order):
+def make_scale(principal_ray, shell_point, screen_point, light_radius, angle_vec, poly_order, screen_normal):
     """
     returns a non-trimmed scale patch based on the point (where the shell should be centered)
     angle_vec is passed in for our convenience, even though it is duplicate information (given the shell_point)
@@ -128,7 +128,8 @@ def make_scale(principal_ray, shell_point, screen_point, light_radius, angle_vec
         poly=poly,
         world_to_local_rotation=world_to_local_rotation,
         world_to_local_translation=world_to_local_translation,
-        domain_cylinder_radius=light_radius
+        domain_cylinder_radius=light_radius,
+        screen_normal=screen_normal
     )
     return scale
 
@@ -419,10 +420,10 @@ def new_explore_direction(screen_normal, prev_scale, principal_ray, light_radius
     screen_point = sum(screen_points) / len(screen_points)
 
     #polyfit to make the taylor poly and return that new scale
-    scale = new_make_scale(principal_ray, shell_point, screen_point, light_radius, optics.globals.POLY_ORDER, prev_scale_arcs, arc_offset_normal, step_size)
+    scale = new_make_scale(principal_ray, shell_point, screen_point, light_radius, optics.globals.POLY_ORDER, prev_scale_arcs, arc_offset_normal, step_size, screen_normal)
     return scale
     
-def new_make_scale(principal_ray, shell_point, screen_point, light_radius, poly_order, prev_arcs, arc_plane_normal, step_size):
+def new_make_scale(principal_ray, shell_point, screen_point, light_radius, poly_order, prev_arcs, arc_plane_normal, step_size, screen_normal):
     """
     returns a non-trimmed scale patch based on the point (where the shell should be centered)
     
@@ -509,7 +510,8 @@ def new_make_scale(principal_ray, shell_point, screen_point, light_radius, poly_
         poly=poly,
         world_to_local_rotation=world_to_local_rotation,
         world_to_local_translation=world_to_local_translation,
-        domain_cylinder_radius=light_radius
+        domain_cylinder_radius=light_radius,
+        screen_normal=screen_normal
     )
     return scale
 
@@ -561,6 +563,67 @@ def create_screen_mesh(ordered_scales):
     left_arc = [p + Point3D(-1.0, 0.0, 0.0) for p in arc]
     right_arc = [p + Point3D(1.0, 0.0, 0.0) for p in arc]
     return optics.mesh.Mesh(mesh=optics.mesh.mesh_from_arcs([right_arc, arc, left_arc]))
+
+#TODO: can probably generalize this into a method that works with the whole 3D mesh. basically meant to take the most central collision
+def _get_best_shell_and_screen_point_from_ray(prev_scale, scale, ray, screen_plane):
+    """
+    If we've collided with the previous scale, use that, otherwise, use collision with the next scale
+    """
+    shell, screen = prev_scale._get_shell_and_screen_point_from_ray(ray, screen_plane)
+    if shell != None:
+        return shell, screen
+    
+    shell, screen = scale._get_shell_and_screen_point_from_ray(ray, screen_plane)
+    if shell != None:
+        return shell, screen
+    
+    return None, None
+
+
+def evaluate_scale(scale, prev_scale, light_radius):
+    
+    #make a vector between the two scales and split into a few different pieces
+    num_primary_rays = 7
+    end_point_vector = scale.shell_point - prev_scale.shell_point
+    end_point_vector_length = numpy.linalg.norm(end_point_vector)
+    end_point_normal = end_point_vector / end_point_vector_length
+    end_point_distances = numpy.linspace(0, end_point_vector_length, num_primary_rays)
+    end_points = [dist * end_point_normal + prev_scale.shell_point for dist in end_point_distances]
+    
+    #calculate reflections for all bundles of rays centered around the end points
+    rays_per_bundle = 11
+    rays_to_render = []
+    pixel_errors = []
+    screen_plane = Plane(prev_scale._pixel_point, prev_scale.screen_normal)
+    for end_point in end_points:
+        #figure out where that ray would end up on the screen. that is the pixel point for this bundle of rays
+        ray_end = end_point * 2.0
+        primary_ray = Ray(Point3D(0.0, 0.0, 0.0), end_point * 2.0)
+        primary_shell_collision, primary_screen_collision = _get_best_shell_and_screen_point_from_ray(prev_scale, scale, primary_ray, screen_plane)
+        
+        #make the bundle of rays, and reflect them all on to the screen
+        cumulative_distance = 0.0
+        num_collisions = 0
+        for y in numpy.linspace(-light_radius, light_radius, num=rays_per_bundle):
+            delta = Point3D(0, y, 0)
+            ray = Ray(delta, ray_end + delta)
+            shell_collision, screen_collision = _get_best_shell_and_screen_point_from_ray(prev_scale, scale, ray, screen_plane)
+            if shell_collision != None:
+                rays_to_render.append(LightRay(delta, shell_collision))
+                rays_to_render.append(LightRay(shell_collision, screen_collision))
+                cumulative_distance += numpy.linalg.norm(primary_screen_collision - screen_collision)
+                num_collisions += 1
+        #TODO: calculate MTF instead
+        #if num_collisions == 0:
+        #    pixel_errors.append(None)
+        #else:
+        #    pixel_errors.append(cumulative_distance / num_collisions)
+        pixel_errors.append(cumulative_distance / num_collisions)
+    
+    scale.focal_error = sum(pixel_errors) / len(pixel_errors)
+    scale._rays = rays_to_render
+    
+    return pixel_errors
     
 def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_normal, principal_ray, process_pool, stop_flag, on_new_scale):
     """
@@ -587,9 +650,9 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     max_spacing = (float(total_vertical_resolution) / float(total_phi_steps)) * max_pixel_spot_size
     
     #create the first scale
-    center_scale = make_scale(principal_ray, initial_shell_point, initial_screen_point, light_radius, AngleVector(0.0, 0.0), optics.globals.POLY_ORDER)
-    center_scale.shell_distance_error = 0.0
-    center_scale.screen_normal = screen_normal
+    center_scale = make_scale(principal_ray, initial_shell_point, initial_screen_point, light_radius, AngleVector(0.0, 0.0), optics.globals.POLY_ORDER, screen_normal)
+    #center_scale.shell_distance_error = 0.0
+    #center_scale.screen_normal = screen_normal
     #scales = [center_scale]
     
     on_new_scale(center_scale)
@@ -691,13 +754,14 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
             
             scale = optics.parallel.call_via_pool(process_pool, new_explore_direction, [screen_normal, prev_scale, principal_ray, light_radius, direction*normalize(Point3D(0.0, 1.0, -1.0))])
             
-            #TODO: move to a sane location?
-            scale.screen_normal = screen_normal
+            #evaluate the new scale
+            pixel_errors = evaluate_scale(scale, prev_scale, light_radius)
+            
             new_scales.append(scale)
             on_new_scale(scale)
             prev_scale = scale
             phi = scale.angle_vec.phi
-            print("Finished phi = %.4f in %.3f" % (phi, time.time() - start_time))
+            print("Finished (phi=%.4f,theta=%.4f) in %.3f    [errors=%s]" % (phi, scale.angle_vec.theta, time.time() - start_time, pixel_errors))
         return new_scales
     
     upward_arc = []
@@ -728,9 +792,9 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
         #scale._calculate_rays()
         print("%.2f   %.2f      %.5f" % (scale.angle_vec.theta, scale.angle_vec.phi, scale.focal_error))
         
-    #a bit of a hack so we can visualize the real error:
-    center_scale.adjacent_scale = upward_arc[0]
-    center_scale.screen_normal = screen_normal
+    ##a bit of a hack so we can visualize the real error:
+    #center_scale.adjacent_scale = upward_arc[0]
+    #center_scale.screen_normal = screen_normal
         
     #export all of the scales as one massive STL
     meshes = [x._mesh for x in ordered_scales]
