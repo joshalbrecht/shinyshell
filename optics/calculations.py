@@ -662,6 +662,10 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     ordered_scales = [center_scale, scale]
     for scale in ordered_scales:
         scale.ensure_mesh()
+        
+    #a bit of a hack so we can visualize the real error:
+    center_scale.adjacent_scale = scale
+    center_scale.screen_normal = screen_normal
     
     #def grow_in_direction(direction, new_scales):
     #    phi = 0.0

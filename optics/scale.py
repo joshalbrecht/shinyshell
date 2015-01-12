@@ -12,6 +12,9 @@ def get_best_shell_and_screen_point_from_ray(scale, adjacent_scale, ray, screen_
     for now, we simply use whichever of the intersections that is closer (between self and adjacent_scale)
     """
     self_shell, self_screen = scale._get_shell_and_screen_point_from_ray(ray, screen_plane)
+    if self_shell != None:
+        return self_shell, self_screen
+    #return None, None
     adj_shell, adj_screen = adjacent_scale._get_shell_and_screen_point_from_ray(ray, screen_plane)
     if self_shell == None:
         return adj_shell, adj_screen
@@ -210,7 +213,7 @@ class PolyScale(object):
         #make a vector between the two scales and split into a few different pieces
         num_primary_rays = 7
         end_point_vector = self.adjacent_scale.shell_point - self.shell_point
-        end_point_vector_length = numpy.linalg.norm(end_point_vector) / 3.0
+        end_point_vector_length = numpy.linalg.norm(end_point_vector)
         end_point_normal = end_point_vector / end_point_vector_length
         end_point_distances = numpy.linspace(0, end_point_vector_length, num_primary_rays)
         end_points = [dist * end_point_normal + self.shell_point for dist in end_point_distances]

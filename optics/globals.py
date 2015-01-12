@@ -15,6 +15,6 @@ HIGH_QUALITY_MODE = 2
 QUALITY_MODE = HIGH_QUALITY_MODE
 
 #what order for taylor poly approximations. higher is better quality but slower
-POLY_ORDER = 3
+POLY_ORDER = 6
 if QUALITY_MODE <= LOW_QUALITY_MODE:
     POLY_ORDER = 2
