@@ -29,6 +29,8 @@ def remote_runner(func, fargs=None, fkwargs=None, prefix=None):
         return value
     except Exception, e:
         output = str(e) + '\n' + ''.join(traceback.format_exception(*sys.exc_info()))
+        print output
+        prefix = "whatever"
         with open(prefix + ERROR_SUFFIX, 'wb') as out_file:
             out_file.write(output)
         raise Exception("Remote error")

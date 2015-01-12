@@ -6,6 +6,21 @@ import scipy.optimize
 from optics.base import *
 import optics.mesh
 
+#TODO: interpolate between them in some way?
+def get_best_shell_and_screen_point_from_ray(scale, adjacent_scale, ray, screen_plane):
+    """
+    for now, we simply use whichever of the intersections that is closer (between self and adjacent_scale)
+    """
+    self_shell, self_screen = scale._get_shell_and_screen_point_from_ray(ray, screen_plane)
+    adj_shell, adj_screen = adjacent_scale._get_shell_and_screen_point_from_ray(ray, screen_plane)
+    if self_shell == None:
+        return adj_shell, adj_screen
+    if adj_shell == None:
+        return self_shell, self_screen
+    if numpy.dot(self_shell, self_shell) < numpy.dot(adj_shell, adj_shell):
+        return self_shell, self_screen
+    return adj_shell, adj_screen
+
 class PolyScale(object): 
     def __init__(   self,
                     shell_point=None,
@@ -31,6 +46,8 @@ class PolyScale(object):
         
         self.focal_error = -1.0
         self.shell_distance_error = None
+        
+        self.screen_normal = None
         
         self._post_init()
         
@@ -63,6 +80,9 @@ class PolyScale(object):
         state['_domain_cylinder_radius'] = self._domain_cylinder_radius
         state['focal_error'] = self.focal_error
         state['shell_distance_error'] = self.shell_distance_error
+        
+        state['screen_normal'] = self.screen_normal
+        
         return state
     
     def __setstate__(self, state):
@@ -76,6 +96,9 @@ class PolyScale(object):
         self._domain_cylinder_radius = state['_domain_cylinder_radius']
         self.focal_error = state['focal_error']
         self.shell_distance_error = state['shell_distance_error']
+        
+        self.screen_normal = state['screen_normal']
+        
         self._post_init()
 
     @property
@@ -126,22 +149,7 @@ class PolyScale(object):
             for ray in self._rays:
                 ray.render()
                 
-    #TODO: interpolate between them in some way?
-    def _get_best_shell_and_screen_point_from_ray(self, ray):
-        """
-        for now, we simply use whichever of the intersections that is closer (between self and adjacent_scale)
-        """
-        self_shell, self_screen = self._get_shell_and_screen_point_from_ray(ray)
-        adj_shell, adj_screen = self.adjacent_scale._get_shell_and_screen_point_from_ray(ray)
-        if self_shell == None:
-            return adj_shell, adj_screen
-        if adj_shell == None:
-            return self_shell, self_screen
-        if numpy.dot(self_shell, self_shell) < numpy.dot(adj_shell, adj_shell):
-            return self_shell, self_screen
-        return adj_shell, adj_screen
-        
-    def _get_shell_and_screen_point_from_ray(self, ray):
+    def _get_shell_and_screen_point_from_ray(self, ray, screen_plane):
         """
         :returns: the position on the shell and screen where this ray would land, or None, None if it would not hit the scale
         """
@@ -153,9 +161,9 @@ class PolyScale(object):
         midpoint = closestPointOnLine(reverse_ray_direction, Point3D(0.0, 0.0, 0.0), normal)
         reflection_direction = (2.0 * (midpoint - reverse_ray_direction)) + reverse_ray_direction
         ray_to_screen = Ray(intersection, intersection + reflection_length * reflection_direction)
-        plane_intersection = self.screen_plane.intersect_line(ray_to_screen.start, ray_to_screen.end)
+        plane_intersection = screen_plane.intersect_line(ray_to_screen.start, ray_to_screen.end)
         return intersection, plane_intersection
-            
+    
     def _calculate_rays(self):
         if self.adjacent_scale == None:
             return
@@ -163,8 +171,6 @@ class PolyScale(object):
         self._rays = []
         
         screen_plane = Plane(self._pixel_point, self.screen_normal)
-        self.screen_plane = screen_plane
-        self.adjacent_scale.screen_plane = screen_plane
         
         #make a vector between the two scales and split into a few different pieces
         num_primary_rays = 5
@@ -178,7 +184,7 @@ class PolyScale(object):
         for end_point in end_points:
             #figure out where that ray would end up on the screen. that is the pixel point for this bundle of rays
             primary_ray = Ray(Point3D(0.0, 0.0, 0.0), end_point * 2.0)
-            primary_shell_collision, primary_screen_collision = self._get_best_shell_and_screen_point_from_ray(primary_ray)
+            primary_shell_collision, primary_screen_collision = get_best_shell_and_screen_point_from_ray(self, self.adjacent_scale, primary_ray, screen_plane)
             #self._rays.append(LightRay(Point3D(0.0, 0.0, 0.0), primary_shell_collision))
             #self._rays.append(LightRay(primary_shell_collision, primary_screen_collision))
             
@@ -189,7 +195,7 @@ class PolyScale(object):
             for y in numpy.linspace(-self._pupil_radius, self._pupil_radius, num=self._num_rays):
                 delta = Point3D(0, y, 0)
                 ray = Ray(delta, ray_end + delta)
-                shell_collision, screen_collision = self._get_best_shell_and_screen_point_from_ray(ray)
+                shell_collision, screen_collision = get_best_shell_and_screen_point_from_ray(self, self.adjacent_scale, ray, screen_plane)
                 if shell_collision != None:
                     self._rays.append(LightRay(delta, shell_collision))
                     self._rays.append(LightRay(shell_collision, screen_collision))

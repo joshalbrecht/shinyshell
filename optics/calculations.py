@@ -142,6 +142,58 @@ def create_averaged_surface(scales):
     for y in range():
         for x in range():
             code
+
+def even_newer_calculate_error(scale, reference_scale, best_error_so_far):
+    """
+    Measure the optical performance of a few points that are in between the two scales
+    """
+
+    #TODO: unhack reference_scale.screen_normal
+    screen_plane = Plane(reference_scale._pixel_point, reference_scale.screen_normal)
+    
+    #make a vector between the two scales and split into a few different pieces
+    num_primary_rays = 6
+    end_point_vector = scale.shell_point - reference_scale.shell_point
+    end_point_vector_length = numpy.linalg.norm(end_point_vector)
+    end_point_normal = end_point_vector / end_point_vector_length
+    end_point_distances = numpy.linspace(0, end_point_vector_length, num_primary_rays)
+    end_points = [dist * end_point_normal + reference_scale.shell_point for dist in end_point_distances]
+    
+    #calculate reflections for all bundles of rays centered around the end points
+    worst_error_this_iteration = 0.0
+    beams_per_ray = 10
+    #TODO: this should almost certainly be light radius...
+    pupil_radius = 3.0
+    for end_point in end_points:
+        #figure out where that ray would end up on the screen. that is the pixel point for this bundle of rays
+        primary_ray = Ray(Point3D(0.0, 0.0, 0.0), end_point * 2.0)
+        primary_shell_collision, primary_screen_collision = optics.scale.get_best_shell_and_screen_point_from_ray(reference_scale, scale, primary_ray, screen_plane)
+        
+        #make the bundle of rays, and reflect them all on to the screen
+        ray_end = primary_shell_collision
+        #cumulative_distance = 0.0
+        #num_collisions = 0
+        for y in numpy.linspace(-pupil_radius, pupil_radius, num=beams_per_ray):
+            delta = Point3D(0, y, 0)
+            ray = Ray(delta, ray_end + delta)
+            shell_collision, screen_collision = optics.scale.get_best_shell_and_screen_point_from_ray(reference_scale, scale, ray, screen_plane)
+            if shell_collision != None:
+                #self._rays.append(LightRay(delta, shell_collision))
+                #self._rays.append(LightRay(shell_collision, screen_collision))
+                #cumulative_distance += numpy.linalg.norm(primary_screen_collision - screen_collision)
+                #num_collisions += 1
+                
+                #update the error
+                dist = numpy.linalg.norm(primary_screen_collision - screen_collision)
+                if dist > worst_error_this_iteration:
+                    worst_error_this_iteration = dist
+                    #if the distance is worse than the best error so far, return this error
+                    if dist > best_error_so_far:
+                        return dist
+                    
+        #TODO: calculate MTF instead
+        #print(cumulative_distance / num_collisions)
+    return worst_error_this_iteration
         
 #TODO: this method for calculating scale error is not EXTREMELY accurate.
 #It's not bad, it's just that we're taking a relatively small number of samples,
@@ -286,7 +338,7 @@ def calculate_error(scale, reference_scale, best_error_so_far):
 def _get_scale_and_error_at_distance(distance, angle_normal, reference_scales, principal_ray, screen_point, light_radius, angle_vec, poly_order, best_error_so_far):
     shell_point = distance * angle_normal
     scale = make_scale(principal_ray, shell_point, screen_point, light_radius, angle_vec, poly_order)
-    error = max([new_calculate_error(scale, reference_scale, best_error_so_far) for reference_scale in reference_scales])
+    error = max([even_newer_calculate_error(scale, reference_scale, best_error_so_far) for reference_scale in reference_scales])
     scale.shell_distance_error = error
     return scale, error
 
@@ -404,27 +456,28 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     #create the first scale
     center_scale = make_scale(principal_ray, initial_shell_point, initial_screen_point, light_radius, AngleVector(0.0, 0.0), optics.globals.POLY_ORDER)
     center_scale.shell_distance_error = 0.0
+    center_scale.screen_normal = screen_normal
     #scales = [center_scale]
     
     on_new_scale(center_scale)
     
-    ##create another scale right above it for debugging the error function
-    ##shell_point = initial_shell_point + Point3D(0.0, 3.0, -1.0)#Point3D(0.0, 3.0, -1.0)
-    #shell_point = initial_shell_point + Point3D(0.0, 3.0, -1.0)
-    #angle_vec = AngleVector(math.pi/2.0, normalized_vector_angle(principal_ray, normalize(shell_point)))
-    #other_scale = make_scale(principal_ray, shell_point, initial_screen_point+Point3D(0.0, -min_pixel_spot_size, min_pixel_spot_size), light_radius, angle_vec, optics.globals.POLY_ORDER)
-    ##other_scale = make_scale(principal_ray, shell_point, initial_screen_point+Point3D(0.0, -200.0, 0.0), light_radius, angle_vec, optics.globals.POLY_ORDER)
-    #ordered_scales = [center_scale, other_scale]
-    #
-    #start_time = time.time()
-    #old_error = calculate_error(other_scale, center_scale, float("inf"))
-    #end_time = time.time()
-    #print("old: %s error in %s" % (old_error, end_time - start_time))
-    #
-    #start_time = time.time()
-    #new_error = new_calculate_error(other_scale, center_scale, float("inf"))
-    #end_time = time.time()
-    #print("new: %s error in %s" % (new_error, end_time - start_time))
+    #create another scale right above it for debugging the error function
+    #shell_point = initial_shell_point + Point3D(0.0, 3.0, -1.0)#Point3D(0.0, 3.0, -1.0)
+    shell_point = initial_shell_point + Point3D(0.0, 3.0, -1.0)
+    angle_vec = AngleVector(math.pi/2.0, normalized_vector_angle(principal_ray, normalize(shell_point)))
+    other_scale = make_scale(principal_ray, shell_point, initial_screen_point+Point3D(0.0, -min_pixel_spot_size, min_pixel_spot_size), light_radius, angle_vec, optics.globals.POLY_ORDER)
+    #other_scale = make_scale(principal_ray, shell_point, initial_screen_point+Point3D(0.0, -200.0, 0.0), light_radius, angle_vec, optics.globals.POLY_ORDER)
+    ordered_scales = [center_scale, other_scale]
+    
+    start_time = time.time()
+    old_error = calculate_error(other_scale, center_scale, float("inf"))
+    end_time = time.time()
+    print("old: %s error in %s" % (old_error, end_time - start_time))
+    
+    start_time = time.time()
+    new_error = even_newer_calculate_error(other_scale, center_scale, float("inf"))
+    end_time = time.time()
+    print("new: %s error in %s" % (new_error, end_time - start_time))
     
     #other_scale, error = find_scale_and_error_at_best_distance([center_scale], principal_ray,
     #    #initial_screen_point+Point3D(0.0, -10.0, 10.0), light_radius, angle_vec)
@@ -489,6 +542,8 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
             #scale, error = optimize_scale_for_angle(optimization_normal, lower_bound, upper_bound, num_iterations, prev_scale, principal_ray, light_radius, angle_vec)            
             #scale, error = explore_direction(direction * optimization_normal, lower_bound, upper_bound, prev_scale, principal_ray, light_radius, angle_vec)
             scale, error = optics.parallel.call_via_pool(process_pool, explore_direction, [direction * optimization_normal, lower_bound, upper_bound, prev_scale, principal_ray, light_radius, angle_vec])
+            #scale, error = explore_direction(direction * optimization_normal, lower_bound, upper_bound, prev_scale, principal_ray, light_radius, angle_vec)
+            scale.screen_normal = screen_normal
             new_scales.append(scale)
             on_new_scale(scale)
             prev_scale = scale
