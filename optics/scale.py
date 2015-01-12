@@ -163,7 +163,7 @@ class PolyScale(object):
         #if the start is out of domain, whatever. calculate and return that as the start point with no arc
         arc = []
         z = self._poly.eval_poly(transformed_ray_start[0], transformed_ray_start[1])
-        point = (transformed_ray_start[0], transformed_ray_start[1], z)
+        point = Point3D(transformed_ray_start[0], transformed_ray_start[1], z)
         if not self._poly.in_domain(point):
             return self._local_to_world(point), arc
         

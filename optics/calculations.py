@@ -406,23 +406,23 @@ def new_explore_direction(screen_normal, prev_scale, principal_ray, light_radius
     arc_offset_normal = numpy.cross(shell_growth_normal, prev_shell_normal)
     prev_scale_arcs = []
     for offset in arc_offsets:
-        ray_start = offset * arc_offset_normal + prev_scale_arcs.shell_point
-        prev_scale_arcs.append(prev_scale_arcs._get_arc_and_start(ray_start, shell_growth_normal, step_size))
+        ray_start = offset * arc_offset_normal + prev_scale.shell_point
+        prev_scale_arcs.append(prev_scale._get_arc_and_start(ray_start, shell_growth_normal, step_size))
     
     #grab the primary growth ray (from the center of the previous scale in the direction we want to grow)
     #cast a bunch of light rays at that point and reflect them from the shell on to the screen. the place where they focus will be our new screen point
     shell_point, primary_arc = prev_scale_arcs[num_arcs / 2]
     rays = _generate_rays(shell_point, light_radius)
-    screen_plane = Plane(prev_scale_arcs.pixel_point, screen_normal)
+    screen_plane = Plane(prev_scale.pixel_point, screen_normal)
     screen_points = prev_scale.get_screen_points(rays, screen_plane)
     assert len(screen_points) > 0
     screen_point = sum(screen_points) / len(screen_points)
 
     #polyfit to make the taylor poly and return that new scale
-    scale = new_make_scale(principal_ray, shell_point, screen_point, light_radius, optics.globals.POLY_ORDER, prev_scale_arcs)
+    scale = new_make_scale(principal_ray, shell_point, screen_point, light_radius, optics.globals.POLY_ORDER, prev_scale_arcs, arc_offset_normal, step_size)
     return scale
     
-def new_make_scale(principal_ray, shell_point, screen_point, light_radius, poly_order, prev_arcs, arc_plane_normal, arc_offset_normal):
+def new_make_scale(principal_ray, shell_point, screen_point, light_radius, poly_order, prev_arcs, arc_plane_normal, step_size):
     """
     returns a non-trimmed scale patch based on the point (where the shell should be centered)
     
@@ -458,6 +458,12 @@ def new_make_scale(principal_ray, shell_point, screen_point, light_radius, poly_
     transformed_screen_point = translate_to_local(screen_point)
     #transformed_shell_point = Point3D(0.0, 0.0, 0.0)
     
+    domain_sq_radius = light_radius * light_radius
+    domain_point = normalize(transformed_screen_point)
+    def in_domain(p):
+        delta = p - (p.dot(domain_point) * domain_point)
+        return delta.dot(delta) < domain_sq_radius
+    
     #actually go calculate the points that we want to use to fit our polynomial
     #use a large upper t bound to make sure we make it far enough
     #TODO: 3.0 is totally arbitrary...
@@ -466,7 +472,7 @@ def new_make_scale(principal_ray, shell_point, screen_point, light_radius, poly_
     every_nth = 10
     #define a vector field to generate the exact shape of the surface
     new_arcs = []
-    for start_point, prev_arc in prev_scale_arcs:
+    for start_point, prev_arc in prev_arcs:
         def f(point, t):
             point_to_screen_vec = normalize(transformed_screen_point - point)
             surface_normal = normalize(point_to_screen_vec + transformed_light_dir)
@@ -477,10 +483,11 @@ def new_make_scale(principal_ray, shell_point, screen_point, light_radius, poly_
         filtered_prev_arc = prev_arc[::-1][::every_nth][1:][::-1]
         #transform them to local
         transformed_prev_arc = [translate_to_local(p) for p in filtered_prev_arc]
-        full_arc = transformed_prev_arc + new_arc
+        full_arc = list(transformed_prev_arc) + list(new_arc)
         #filter out any not in the new domain
         final_arc = [p for p in full_arc if in_domain(p)]
-        new_arcs.append(final_arc)
+        if len(final_arc) > 0:
+            new_arcs.append(final_arc)
         
     points = numpy.vstack(new_arcs)
     #fit the polynomial to the points:
@@ -650,62 +657,68 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     #this defines the first arc that we are making (a vertical line along the middle)
     optimization_normal = -1.0 * normalize(numpy.cross(lateral_normal, screen_normal))
     
-    def grow_in_direction(direction, new_scales):
-        phi = 0.0
-        prev_scale = center_scale
-        while phi < final_phi:
-            phi += phi_step
-            theta = math.pi / 2.0
-            if direction < 0:
-                theta = 3.0 * math.pi / 2.0
-            angle_vec = AngleVector(theta, phi)
-            
-            if stop_flag.is_set():
-                return new_scales
-            
-            #old function: used to optimize in multiple directions
-            #TODO: put something like it back to have a curved screen
-            #scale, error = optimize_scale_for_angle(optimization_normal, lower_bound, upper_bound, num_iterations, prev_scale, principal_ray, light_radius, angle_vec)            
-            #scale, error = explore_direction(direction * optimization_normal, lower_bound, upper_bound, prev_scale, principal_ray, light_radius, angle_vec)
-            scale, error = optics.parallel.call_via_pool(process_pool, explore_direction, [direction * optimization_normal, lower_bound, upper_bound, prev_scale, principal_ray, light_radius, angle_vec])
-            #scale, error = explore_direction(direction * optimization_normal, lower_bound, upper_bound, prev_scale, principal_ray, light_radius, angle_vec)
-            scale.screen_normal = screen_normal
-            new_scales.append(scale)
-            on_new_scale(scale)
-            prev_scale = scale
-        return new_scales
-    
-    upward_arc = []
-    downward_arc = []
-    threads = [threading.Thread(target=grow_in_direction, args=args) for args in ((1.0, upward_arc), (-1.0, downward_arc))]
-    for thread in threads:
-        thread.start()
-        
-    while True:
-        all_threads_done = True not in [t.is_alive() for t in threads]
-        if all_threads_done:
-            break
-    
-        if stop_flag.is_set():
-            return []
-        
-        time.sleep(0.1)
-        
-    for thread in threads:
-        thread.join()
-    
-    #print out a little graph of the errors of the scales so we can get a sense
-    downward_arc.reverse()
-    ordered_scales = downward_arc + [center_scale] + upward_arc
-    print("theta  phi     dist_error   focal_error")
+    #testing out new growth function:
+    scale = new_explore_direction(screen_normal, center_scale, principal_ray, light_radius, normalize(Point3D(0.0, 1.0, -1.0)))
+    ordered_scales = [center_scale, scale]
     for scale in ordered_scales:
         scale.ensure_mesh()
-        scale._calculate_rays()
-        print("%.2f   %.2f    %.5f      %.5f" % (scale.angle_vec.theta, scale.angle_vec.phi, scale.shell_distance_error, scale.focal_error))
-        
-    #a bit of a hack so we can visualize the real error:
-    center_scale.adjacent_scale = upward_arc[0]
-    center_scale.screen_normal = screen_normal
+    
+    #def grow_in_direction(direction, new_scales):
+    #    phi = 0.0
+    #    prev_scale = center_scale
+    #    while phi < final_phi:
+    #        phi += phi_step
+    #        theta = math.pi / 2.0
+    #        if direction < 0:
+    #            theta = 3.0 * math.pi / 2.0
+    #        angle_vec = AngleVector(theta, phi)
+    #        
+    #        if stop_flag.is_set():
+    #            return new_scales
+    #        
+    #        #old function: used to optimize in multiple directions
+    #        #TODO: put something like it back to have a curved screen
+    #        #scale, error = optimize_scale_for_angle(optimization_normal, lower_bound, upper_bound, num_iterations, prev_scale, principal_ray, light_radius, angle_vec)            
+    #        #scale, error = explore_direction(direction * optimization_normal, lower_bound, upper_bound, prev_scale, principal_ray, light_radius, angle_vec)
+    #        scale, error = optics.parallel.call_via_pool(process_pool, explore_direction, [direction * optimization_normal, lower_bound, upper_bound, prev_scale, principal_ray, light_radius, angle_vec])
+    #        #scale, error = explore_direction(direction * optimization_normal, lower_bound, upper_bound, prev_scale, principal_ray, light_radius, angle_vec)
+    #        scale.screen_normal = screen_normal
+    #        new_scales.append(scale)
+    #        on_new_scale(scale)
+    #        prev_scale = scale
+    #    return new_scales
+    #
+    #upward_arc = []
+    #downward_arc = []
+    #threads = [threading.Thread(target=grow_in_direction, args=args) for args in ((1.0, upward_arc), (-1.0, downward_arc))]
+    #for thread in threads:
+    #    thread.start()
+    #    
+    #while True:
+    #    all_threads_done = True not in [t.is_alive() for t in threads]
+    #    if all_threads_done:
+    #        break
+    #
+    #    if stop_flag.is_set():
+    #        return []
+    #    
+    #    time.sleep(0.1)
+    #    
+    #for thread in threads:
+    #    thread.join()
+    #
+    ##print out a little graph of the errors of the scales so we can get a sense
+    #downward_arc.reverse()
+    #ordered_scales = downward_arc + [center_scale] + upward_arc
+    #print("theta  phi     dist_error   focal_error")
+    #for scale in ordered_scales:
+    #    scale.ensure_mesh()
+    #    scale._calculate_rays()
+    #    print("%.2f   %.2f    %.5f      %.5f" % (scale.angle_vec.theta, scale.angle_vec.phi, scale.shell_distance_error, scale.focal_error))
+    #    
+    ##a bit of a hack so we can visualize the real error:
+    #center_scale.adjacent_scale = upward_arc[0]
+    #center_scale.screen_normal = screen_normal
         
     #export all of the scales as one massive STL
     meshes = [x._mesh for x in ordered_scales]
