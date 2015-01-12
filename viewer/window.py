@@ -69,6 +69,9 @@ class Window(pyglet.window.Window):
         self.scales = []
         self._stop_generating_surface()
         screen_normal = normalize(self._screen_normal_point.pos - self._screen_point.pos)
+        print("Shell: %s" % (self._shell_point.pos))
+        print("Screen: %s" % (self._screen_point.pos))
+        print("Normal: %s" % (screen_normal))
         self._generate_surface(self._shell_point.pos, self._screen_point.pos, screen_normal, self._principal_ray, on_done, on_new_scale)
 
     def on_draw(self):
