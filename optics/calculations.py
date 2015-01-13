@@ -438,8 +438,11 @@ def new_explore_direction(screen_normal, prev_scale, nearby_scales, principal_ra
     rays = _generate_rays(shell_point, light_radius)
     screen_plane = Plane(prev_scale.pixel_point, screen_normal)
     screen_points = prev_scale.get_screen_points(rays, screen_plane)
-    assert len(screen_points) > 0
-    focused_screen_point = sum(screen_points) / len(screen_points)
+    #TODO: best to remove this and add back an assertion after we've fixed the poly fit stuff
+    if len(screen_points) > 0:
+        focused_screen_point = sum(screen_points) / len(screen_points)
+    else:
+        focused_screen_point = None
     
     #calculate angle_vector from shell_point
     h_arc_normal = get_arc_plane_normal(principal_ray, True)
@@ -448,7 +451,8 @@ def new_explore_direction(screen_normal, prev_scale, nearby_scales, principal_ra
     
     #constrain screen_point to actually be along the growth vector
     screen_growth_normal = normalize(numpy.cross(arc_offset_normal, screen_normal))
-    screen_point = closestPointOnLine(focused_screen_point, prev_scale._pixel_point, prev_scale._pixel_point + screen_growth_normal)
+    if focused_screen_point != None:
+        screen_point = closestPointOnLine(focused_screen_point, prev_scale._pixel_point, prev_scale._pixel_point + screen_growth_normal)
     
     ##TODO: maybe switch to this and use 3D bundle of rays?
     #screen_point = focused_screen_point
@@ -463,10 +467,14 @@ def new_explore_direction(screen_normal, prev_scale, nearby_scales, principal_ra
     max_screen_distance = pixel_size * angular_delta * pixels_per_radian
     
     #if you move farther than that, the no, screen point gets truncated back towards the previous scale
-    inter_pixel_distance = numpy.linalg.norm(screen_point - prev_scale._pixel_point)
-    if inter_pixel_distance > max_screen_distance:
+    if focused_screen_point != None:
+        inter_pixel_distance = numpy.linalg.norm(screen_point - prev_scale._pixel_point)
+        if inter_pixel_distance > max_screen_distance:
+            screen_point = screen_growth_normal * max_screen_distance + prev_scale._pixel_point
+            print("Trimming from %.4f to %.4f" % (inter_pixel_distance, max_screen_distance))
+    else:
         screen_point = screen_growth_normal * max_screen_distance + prev_scale._pixel_point
-        print("Trimming from %.4f to %.4f" % (inter_pixel_distance, max_screen_distance))
+        print("Using max distance because this shell sucks :(")
 
     #polyfit to make the taylor poly and return that new scale
     scale = new_make_scale(principal_ray, shell_point, screen_point, light_radius, poly_order, prev_scale_arcs, arc_offset_normal, step_size, screen_normal, angle_vec)
