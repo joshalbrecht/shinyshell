@@ -767,7 +767,7 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     ##upper_bound = max_spacing
         
     #phi_step = 0.05
-    final_phi = 0.0001#FOV/6.0#FOV/2.0
+    final_phi = FOV/6.0#FOV/2.0
     
     ##this is side to side motion
     #lateral_normal = normalize(numpy.cross(principal_ray, screen_normal))
@@ -871,8 +871,8 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
                 nearby_scales = [diagonal_scale, side_scale, vertical_scale]
                 start_time = time.time()
                 #TODO: obviously put this back
-                #new_scale = optics.parallel.call_via_pool(process_pool, new_explore_direction, [screen_normal, prev_scale, nearby_scales, principal_ray, light_radius, optimization_normal])
-                new_scale = new_explore_direction(screen_normal, prev_scale, nearby_scales, principal_ray, light_radius, optimization_normal)
+                new_scale = optics.parallel.call_via_pool(process_pool, new_explore_direction, [screen_normal, prev_scale, nearby_scales, principal_ray, light_radius, optimization_normal])
+                #new_scale = new_explore_direction(screen_normal, prev_scale, nearby_scales, principal_ray, light_radius, optimization_normal)
                 
                 if stop_flag.is_set():
                     return scale_rows
@@ -907,10 +907,37 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     lower_right_scale_rows = []
     lower_left_scale_rows = []
     
-    grow_quadrant(upward_arc, rightward_arc, upper_right_scale_rows, normalize(Point3D(1.0, 0.0, 0.0)))
-    grow_quadrant(upward_arc, leftward_arc, upper_left_scale_rows, normalize(Point3D(-1.0, 0.0, 0.0)))
-    grow_quadrant(downward_arc, rightward_arc, lower_right_scale_rows, normalize(Point3D(1.0, 0.0, 0.0)))
-    grow_quadrant(downward_arc, leftward_arc, lower_left_scale_rows, normalize(Point3D(-1.0, 0.0, 0.0)))
+    def upper_right_thread():
+        grow_quadrant(upward_arc, rightward_arc, upper_right_scale_rows, normalize(Point3D(1.0, 0.0, 0.0)))
+    def upper_left_thread():
+        grow_quadrant(upward_arc, leftward_arc, upper_left_scale_rows, normalize(Point3D(-1.0, 0.0, 0.0)))
+    def lower_right_thread():
+        grow_quadrant(downward_arc, rightward_arc, lower_right_scale_rows, normalize(Point3D(1.0, 0.0, 0.0)))
+    def lower_left_thread():
+        grow_quadrant(downward_arc, leftward_arc, lower_left_scale_rows, normalize(Point3D(-1.0, 0.0, 0.0)))
+        
+    threads = [threading.Thread(target=target) for target in (\
+        upper_right_thread,
+        upper_left_thread,
+        lower_right_thread,
+        lower_left_thread
+    )]
+    
+    for thread in threads:
+        thread.start()
+        
+    while True:
+        all_threads_done = True not in [t.is_alive() for t in threads]
+        if all_threads_done:
+            break
+    
+        if stop_flag.is_set():
+            return []
+        
+        time.sleep(0.1)
+        
+    for thread in threads:
+        thread.join()
     
     meshing_start_time = time.time()
     
