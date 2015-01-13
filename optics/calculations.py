@@ -767,7 +767,7 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     ##upper_bound = max_spacing
         
     #phi_step = 0.05
-    final_phi = 0.00001#0.07#FOV/6.0#FOV/2.0
+    final_phi = 0.0001#FOV/6.0#FOV/2.0
     
     ##this is side to side motion
     #lateral_normal = normalize(numpy.cross(principal_ray, screen_normal))
@@ -935,10 +935,52 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     arcs.reverse()
     
     print("Completed meshing in %.4f seconds" % (time.time() - meshing_start_time))
+
+    mesh = optics.mesh.Mesh(mesh=optics.mesh.solid_from_arcs(arcs, Point3D(0.0, 0.0, -10.0)))
+    mesh.export("shell_high_res.stl")
+    print("Finished exporting fine mesh")
     
-    mesh = optics.mesh.Mesh(mesh=optics.mesh.solid_from_arcs(arcs))
-    mesh.export("new_shell.stl")
-    print("Finished exporting mesh")
+    coarse_mesh_step_size = 0.5
+    upper_right_arcs = create_patch_arcs(upper_right_scale_rows, light_radius, step_size=coarse_mesh_step_size)
+    upper_left_arcs = create_patch_arcs(upper_left_scale_rows, light_radius, step_size=coarse_mesh_step_size)
+    lower_right_arcs = create_patch_arcs(lower_right_scale_rows, light_radius, step_size=coarse_mesh_step_size)
+    lower_left_arcs = create_patch_arcs(lower_left_scale_rows, light_radius, step_size=coarse_mesh_step_size)
+    
+    lower_right_arcs.pop(0)
+    lower_right_arcs.reverse()
+    right_arcs = lower_right_arcs + upper_right_arcs
+    
+    lower_left_arcs.pop(0)
+    lower_left_arcs.reverse()
+    left_arcs = lower_left_arcs + upper_left_arcs
+    
+    arcs = []
+    for i in range(0, len(left_arcs)):
+        left_arcs[i].pop(0)
+        left_arcs[i].reverse()
+        arcs.append(left_arcs[i] + right_arcs[i])
+    arcs.reverse()
+    
+    mesh = optics.mesh.Mesh(mesh=optics.mesh.solid_from_arcs(arcs, Point3D(0.0, 0.0, -10.0)))
+    mesh.export("shell_low_res.stl")
+    print("Finished exporting coarse mesh")
+    
+    #export the shape formed by the screen pixels as an STL
+    lower_right_scale_rows.pop()
+    lower_right_scale_rows.reverse()
+    right_rows = lower_right_scale_rows + upper_right_scale_rows
+    lower_left_scale_rows.pop()
+    lower_left_scale_rows.reverse()
+    left_rows = lower_left_scale_rows + upper_left_scale_rows
+    all_rows = []
+    for i in range(0, len(right_rows)):
+        left_row = left_rows[i]
+        left_row.pop(0)
+        left_row.reverse()
+        all_rows.append(left_row + right_rows[i])
+    
+    new_create_screen_mesh(all_rows).export("new_screen.stl")
+    print("Exported screen")
     
     #just so we can keep looking at them
     all_scales = set([])
@@ -1036,4 +1078,11 @@ def create_patch_arcs(scale_rows, light_radius, step_size=0.5):
     
     return arcs
     
-    
+def new_create_screen_mesh(all_rows):
+    arcs = []
+    for row in all_rows:
+        arc = []
+        for scale in row:
+            arc.append(scale.pixel_point)
+        arcs.append(arc)
+    return optics.mesh.Mesh(mesh=optics.mesh.solid_from_arcs(arcs, scale.screen_normal * -5.0))

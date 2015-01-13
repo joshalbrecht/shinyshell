@@ -47,7 +47,7 @@ def mesh_from_arcs(arcs):
 
     return trianglePolyData
 
-def solid_from_arcs(arcs, offset=-15.0):
+def solid_from_arcs(arcs, delta):
     
     #create all of the points so they have sensible, shared indices
     points = vtk.vtkPoints()
@@ -63,8 +63,8 @@ def solid_from_arcs(arcs, offset=-15.0):
     for i in range(0, len(arcs)):
         arc = arcs[i]
         for j in range(0, len(arc)):
-            point = arc[j]
-            points.InsertNextPoint(point[0], point[1], point[2]+offset)
+            point = arc[j] + delta
+            points.InsertNextPoint(point[0], point[1], point[2])
     
     # Build the meshgrid manually
     triangles = vtk.vtkCellArray()
