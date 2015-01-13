@@ -440,6 +440,10 @@ def new_explore_direction(screen_normal, prev_scale, principal_ray, light_radius
     screen_growth_normal = normalize(numpy.cross(arc_offset_normal, screen_normal))
     screen_point = closestPointOnLine(focused_screen_point, prev_scale._pixel_point, prev_scale._pixel_point + screen_growth_normal)
     
+    ##TODO: maybe switch to this and use 3D bundle of rays?
+    #screen_point = focused_screen_point
+    #screen_growth_normal = normalize(screen_point - prev_scale._pixel_point)
+    
     #cap the movement along the screen based on phi
     #max pixel size, ppd spec, and angular delta tells us exactly how much we can move
     pixel_size = phi_to_pixel_size((angle_vec.phi+prev_scale.angle_vec.phi)/2.0, (angle_vec.theta+prev_scale.angle_vec.theta)/2.0)
@@ -741,18 +745,21 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     #simply walk along the direction orthogonal to the last pixel -> shell vector in the current plane
     #and find the location with the minimal error
     
-    lower_bound = 0.0
-    #NOTE: is a hack / guestimate
-    upper_bound = 2.0 * light_radius
-    #upper_bound = max_spacing
+    #lower_bound = 0.0
+    ##NOTE: is a hack / guestimate
+    #upper_bound = 2.0 * light_radius
+    ##upper_bound = max_spacing
         
     #phi_step = 0.05
     final_phi = FOV/2.0
     
-    #this is side to side motion
-    lateral_normal = normalize(numpy.cross(principal_ray, screen_normal))
-    #this defines the first arc that we are making (a vertical line along the middle)
-    optimization_normal = -1.0 * normalize(numpy.cross(lateral_normal, screen_normal))
+    ##this is side to side motion
+    #lateral_normal = normalize(numpy.cross(principal_ray, screen_normal))
+    ##this defines the first arc that we are making (a vertical line along the middle)
+    #optimization_normal = -1.0 * normalize(numpy.cross(lateral_normal, screen_normal))
+    
+    #optimization_normal = normalize(Point3D(0.0, 1.0, -1.0))
+    optimization_normal = normalize(Point3D(1.0, 0.0, 0.0))
     
     ##testing out new growth function:
     #scale = new_explore_direction(screen_normal, center_scale, principal_ray, light_radius, normalize(Point3D(0.0, 1.0, -1.0)))
@@ -788,7 +795,7 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
             
             start_time = time.time()
             
-            scale = optics.parallel.call_via_pool(process_pool, new_explore_direction, [screen_normal, prev_scale, principal_ray, light_radius, direction*normalize(Point3D(0.0, 1.0, -1.0))])
+            scale = optics.parallel.call_via_pool(process_pool, new_explore_direction, [screen_normal, prev_scale, principal_ray, light_radius, direction*optimization_normal])
             
             if stop_flag.is_set():
                 return new_scales
