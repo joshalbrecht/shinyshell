@@ -403,9 +403,7 @@ def _generate_rays(end_point, light_radius, num_rays=11):
         rays.append(ray)
     return rays
 
-#TODO: might be good to grow with multiple prev scales, which would necessitate considering points from all of them when growing the new one
-#TODO: constrain the growth of the screen
-def new_explore_direction(screen_normal, prev_scale, principal_ray, light_radius, shell_growth_normal):
+def new_explore_direction(screen_normal, prev_scale, nearby_scales, principal_ray, light_radius, shell_growth_normal):
     """
     shell_growth_normal is roughly the direction that we want grow. Basically, the normal between the previous two scales.
     """
@@ -420,7 +418,17 @@ def new_explore_direction(screen_normal, prev_scale, principal_ray, light_radius
     prev_scale_arcs = []
     for offset in arc_offsets:
         ray_start = offset * arc_offset_normal + prev_scale.shell_point
-        prev_scale_arcs.append(prev_scale._get_arc_and_start(ray_start, shell_growth_normal, step_size))
+        final_arc_start = None
+        final_arc = []
+        for scale in nearby_scales:
+            arc_start, arc = scale._get_arc_and_start(ray_start, shell_growth_normal, step_size)
+            if final_arc_start == None:
+                final_arc_start = arc_start
+            if len(arc) > 0:
+                final_arc_start = arc_start
+                final_arc += arc
+                ray_start = arc_start
+        prev_scale_arcs.append((final_arc_start, final_arc))
     
     #grab the primary growth ray (from the center of the previous scale in the direction we want to grow)
     #cast a bunch of light rays at that point and reflect them from the shell on to the screen. the place where they focus will be our new screen point
@@ -660,7 +668,8 @@ def evaluate_scale(scale, prev_scale, light_radius):
         pixel_errors.append(cumulative_distance / num_collisions)
     
     scale.focal_error = sum(pixel_errors) / len(pixel_errors)
-    scale._rays = rays_to_render
+    #TODO: find a way to enable the rendering from only a few scales instead of all of them
+    #scale._rays = rays_to_render
     
     return pixel_errors
     
@@ -795,7 +804,8 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
             
             start_time = time.time()
             
-            scale = optics.parallel.call_via_pool(process_pool, new_explore_direction, [screen_normal, prev_scale, principal_ray, light_radius, direction*optimization_normal])
+            nearby_scales = [prev_scale]
+            scale = optics.parallel.call_via_pool(process_pool, new_explore_direction, [screen_normal, prev_scale, nearby_scales, principal_ray, light_radius, direction*optimization_normal])
             
             if stop_flag.is_set():
                 return new_scales
