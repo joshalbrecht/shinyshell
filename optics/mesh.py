@@ -2,8 +2,11 @@
 
 import vtk
 import numpy
-import pyglet.gl
-import pyglet.graphics
+try:
+    import pyglet.gl
+    import pyglet.graphics
+except:
+    pass
 
 from optics.base import *
 
