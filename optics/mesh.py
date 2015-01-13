@@ -47,6 +47,141 @@ def mesh_from_arcs(arcs):
 
     return trianglePolyData
 
+def solid_from_arcs(arcs, offset=-15.0):
+    
+    #create all of the points so they have sensible, shared indices
+    points = vtk.vtkPoints()
+    num_points_in_arc = len(arcs[0])
+    for i in range(0, len(arcs)):
+        arc = arcs[i]
+        assert len(arc) == num_points_in_arc, "All arcs must be the same length"
+        for j in range(0, len(arc)):
+            point = arc[j]
+            points.InsertNextPoint(point[0], point[1], point[2])
+            
+    #add the offset points
+    for i in range(0, len(arcs)):
+        arc = arcs[i]
+        for j in range(0, len(arc)):
+            point = arc[j]
+            points.InsertNextPoint(point[0], point[1], point[2]+offset)
+    
+    # Build the meshgrid manually
+    triangles = vtk.vtkCellArray()
+    for i in range(1, len(arcs)):
+        for j in range(0, len(arc)-1):
+            
+            triangle = vtk.vtkTriangle()
+            pointIds = triangle.GetPointIds()
+            pointIds.SetId(0, i * num_points_in_arc + j)
+            pointIds.SetId(1, i * num_points_in_arc + j + 1)
+            pointIds.SetId(2, (i-1) * num_points_in_arc + j + 1)
+            triangles.InsertNextCell(triangle)
+
+            triangle = vtk.vtkTriangle()
+            pointIds = triangle.GetPointIds()
+            pointIds.SetId(0, i * num_points_in_arc + j)
+            pointIds.SetId(1, (i-1) * num_points_in_arc + j + 1)
+            pointIds.SetId(2, (i-1) * num_points_in_arc + j)
+            triangles.InsertNextCell(triangle)
+            
+    # Build the other side of the solid
+    num_points_in_half = num_points_in_arc * len(arcs)
+    for i in range(1, len(arcs)):
+        for j in range(0, len(arc)-1):
+            
+            triangle = vtk.vtkTriangle()
+            pointIds = triangle.GetPointIds()
+            pointIds.SetId(1, num_points_in_half + i * num_points_in_arc + j)
+            pointIds.SetId(0, num_points_in_half + i * num_points_in_arc + j + 1)
+            pointIds.SetId(2, num_points_in_half + (i-1) * num_points_in_arc + j + 1)
+            triangles.InsertNextCell(triangle)
+
+            triangle = vtk.vtkTriangle()
+            pointIds = triangle.GetPointIds()
+            pointIds.SetId(1, num_points_in_half + i * num_points_in_arc + j)
+            pointIds.SetId(0, num_points_in_half + (i-1) * num_points_in_arc + j + 1)
+            pointIds.SetId(2, num_points_in_half + (i-1) * num_points_in_arc + j)
+            triangles.InsertNextCell(triangle)
+            
+    #create the sides of the solid:
+    i = 0
+    for j in range(0, len(arc)-1):
+        
+        triangle = vtk.vtkTriangle()
+        pointIds = triangle.GetPointIds()
+        pointIds.SetId(0, num_points_in_half + i * num_points_in_arc + j + 1)
+        pointIds.SetId(1, num_points_in_half + i * num_points_in_arc + j)
+        pointIds.SetId(2, i * num_points_in_arc + j)
+        triangles.InsertNextCell(triangle)
+
+        triangle = vtk.vtkTriangle()
+        pointIds = triangle.GetPointIds()
+        pointIds.SetId(1, i * num_points_in_arc + j)
+        pointIds.SetId(0, num_points_in_half + i * num_points_in_arc + j + 1)
+        pointIds.SetId(2, i * num_points_in_arc + j + 1)
+        triangles.InsertNextCell(triangle)
+        
+    i = len(arcs)-1
+    for j in range(0, len(arc)-1):
+        
+        triangle = vtk.vtkTriangle()
+        pointIds = triangle.GetPointIds()
+        pointIds.SetId(1, num_points_in_half + i * num_points_in_arc + j + 1)
+        pointIds.SetId(0, num_points_in_half + i * num_points_in_arc + j)
+        pointIds.SetId(2, i * num_points_in_arc + j)
+        triangles.InsertNextCell(triangle)
+
+        triangle = vtk.vtkTriangle()
+        pointIds = triangle.GetPointIds()
+        pointIds.SetId(0, i * num_points_in_arc + j)
+        pointIds.SetId(1, num_points_in_half + i * num_points_in_arc + j + 1)
+        pointIds.SetId(2, i * num_points_in_arc + j + 1)
+        triangles.InsertNextCell(triangle)
+            
+    #and now create the top and bottom
+    j = 0
+    for i in range(0, len(arcs)-1):
+        triangle = vtk.vtkTriangle()
+        pointIds = triangle.GetPointIds()
+        pointIds.SetId(1, num_points_in_half + (i+1) * num_points_in_arc + j)
+        pointIds.SetId(0, num_points_in_half + i * num_points_in_arc + j)
+        pointIds.SetId(2, i * num_points_in_arc + j)
+        triangles.InsertNextCell(triangle)
+        
+        triangle = vtk.vtkTriangle()
+        pointIds = triangle.GetPointIds()
+        pointIds.SetId(0, i * num_points_in_arc + j)
+        pointIds.SetId(1, num_points_in_half + (i+1) * num_points_in_arc + j)
+        pointIds.SetId(2, (i+1) * num_points_in_arc + j)
+        triangles.InsertNextCell(triangle)
+    
+    j = len(arc)-1
+    for i in range(0, len(arcs)-1):
+        triangle = vtk.vtkTriangle()
+        pointIds = triangle.GetPointIds()
+        pointIds.SetId(0, num_points_in_half + (i+1) * num_points_in_arc + j)
+        pointIds.SetId(1, num_points_in_half + i * num_points_in_arc + j)
+        pointIds.SetId(2, i * num_points_in_arc + j)
+        triangles.InsertNextCell(triangle)
+        
+        triangle = vtk.vtkTriangle()
+        pointIds = triangle.GetPointIds()
+        pointIds.SetId(1, i * num_points_in_arc + j)
+        pointIds.SetId(0, num_points_in_half + (i+1) * num_points_in_arc + j)
+        pointIds.SetId(2, (i+1) * num_points_in_arc + j)
+        triangles.InsertNextCell(triangle)
+        
+    # Create a polydata object
+    trianglePolyData = vtk.vtkPolyData()
+
+    # Add the geometry and topology to the polydata
+    trianglePolyData.SetPoints(points)
+    trianglePolyData.SetPolys(triangles)
+    trianglePolyData.Update()
+
+    return trianglePolyData
+
 #NOTE: this would be much cleaner if I had not inlined the logic about how far away the points are from the light cone
 def trim_mesh_with_cone(mesh, cone_point, cone_normal, cone_radius):
     """

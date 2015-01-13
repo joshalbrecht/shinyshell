@@ -767,7 +767,7 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     ##upper_bound = max_spacing
         
     #phi_step = 0.05
-    final_phi = 0.07#FOV/6.0#FOV/2.0
+    final_phi = 0.00001#0.07#FOV/6.0#FOV/2.0
     
     ##this is side to side motion
     #lateral_normal = normalize(numpy.cross(principal_ray, screen_normal))
@@ -936,7 +936,7 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     
     print("Completed meshing in %.4f seconds" % (time.time() - meshing_start_time))
     
-    mesh = optics.mesh.Mesh(mesh=optics.mesh.mesh_from_arcs(arcs))
+    mesh = optics.mesh.Mesh(mesh=optics.mesh.solid_from_arcs(arcs))
     mesh.export("new_shell.stl")
     print("Finished exporting mesh")
     
