@@ -26,7 +26,7 @@ import optics.parallel
 import optics.scale
 import optics.taylor_poly
 
-FOV = math.pi / 3.0
+FOV = math.pi / 4.0
 
 def phi_to_pixel_size(phi, theta):
     """
@@ -78,11 +78,8 @@ def polyfit2d(x, y, z, order=3):
     ij = itertools.product(range(order+1), range(order+1))
     for k, (i,j) in enumerate(ij):
         G[:,k] = x**i * y**j
-    m, residuals, _, singular = numpy.linalg.lstsq(G, z)
-    print "coeffs", m
-    print "residuals", residuals
-    print "singular values of matrix", singular
-    return m
+    m, residuals, _, _ = numpy.linalg.lstsq(G, z)
+    return m, sum(residuals) > 1.0
 
 #Note--might seem a little bizarre that we are transforming everything outside of PolyShell even though the details of its inner workings should be concealed
 #but it's for efficiency reasons--matrix multiplying a bajillion points into the correct space is going to be way slower than just
@@ -128,7 +125,7 @@ def make_scale(principal_ray, shell_point, screen_point, light_radius, angle_vec
     x = points[:, 0]
     y = points[:, 1]
     z = points[:, 2]
-    coefficients = polyfit2d(x, y, z, order=poly_order)
+    coefficients, surface_is_retarded = polyfit2d(x, y, z, order=poly_order)
     order = int(numpy.sqrt(len(coefficients)))
     cohef = []
     for i in range(0, order):
@@ -408,7 +405,7 @@ def _generate_rays(end_point, light_radius, num_rays=11):
         rays.append(Ray(delta, ray_end + delta))
     return rays
 
-def new_explore_direction(screen_normal, prev_scale, nearby_scales, principal_ray, light_radius, shell_growth_normal):
+def new_explore_direction(screen_normal, prev_scale, nearby_scales, principal_ray, light_radius, shell_growth_normal, poly_order):
     """
     shell_growth_normal is roughly the direction that we want grow. Basically, the normal between the previous two scales.
     """
@@ -441,8 +438,11 @@ def new_explore_direction(screen_normal, prev_scale, nearby_scales, principal_ra
     rays = _generate_rays(shell_point, light_radius)
     screen_plane = Plane(prev_scale.pixel_point, screen_normal)
     screen_points = prev_scale.get_screen_points(rays, screen_plane)
-    assert len(screen_points) > 0
-    focused_screen_point = sum(screen_points) / len(screen_points)
+    #TODO: best to remove this and add back an assertion after we've fixed the poly fit stuff
+    if len(screen_points) > 0:
+        focused_screen_point = sum(screen_points) / len(screen_points)
+    else:
+        focused_screen_point = None
     
     #calculate angle_vector from shell_point
     h_arc_normal = get_arc_plane_normal(principal_ray, True)
@@ -451,7 +451,8 @@ def new_explore_direction(screen_normal, prev_scale, nearby_scales, principal_ra
     
     #constrain screen_point to actually be along the growth vector
     screen_growth_normal = normalize(numpy.cross(arc_offset_normal, screen_normal))
-    screen_point = closestPointOnLine(focused_screen_point, prev_scale._pixel_point, prev_scale._pixel_point + screen_growth_normal)
+    if focused_screen_point != None:
+        screen_point = closestPointOnLine(focused_screen_point, prev_scale._pixel_point, prev_scale._pixel_point + screen_growth_normal)
     
     ##TODO: maybe switch to this and use 3D bundle of rays?
     #screen_point = focused_screen_point
@@ -466,16 +467,20 @@ def new_explore_direction(screen_normal, prev_scale, nearby_scales, principal_ra
     max_screen_distance = pixel_size * angular_delta * pixels_per_radian
     
     #if you move farther than that, the no, screen point gets truncated back towards the previous scale
-    inter_pixel_distance = numpy.linalg.norm(screen_point - prev_scale._pixel_point)
-    if inter_pixel_distance > max_screen_distance:
+    if focused_screen_point != None:
+        inter_pixel_distance = numpy.linalg.norm(screen_point - prev_scale._pixel_point)
+        if inter_pixel_distance > max_screen_distance:
+            screen_point = screen_growth_normal * max_screen_distance + prev_scale._pixel_point
+            print("Trimming from %.4f to %.4f" % (inter_pixel_distance, max_screen_distance))
+    else:
         screen_point = screen_growth_normal * max_screen_distance + prev_scale._pixel_point
-        print("Trimming from %.4f to %.4f" % (inter_pixel_distance, max_screen_distance))
+        print("Using max distance because this shell sucks :(")
 
     #polyfit to make the taylor poly and return that new scale
-    scale = new_make_scale(principal_ray, shell_point, screen_point, light_radius, optics.globals.POLY_ORDER, prev_scale_arcs, arc_offset_normal, step_size, screen_normal, angle_vec)
+    scale = new_make_scale(principal_ray, shell_point, screen_point, light_radius, poly_order, prev_scale_arcs, arc_offset_normal, step_size, screen_normal, angle_vec, prev_scale._poly.get_cohef())
     return scale
     
-def new_make_scale(principal_ray, shell_point, screen_point, light_radius, poly_order, prev_arcs, arc_plane_normal, step_size, screen_normal, angle_vec):
+def new_make_scale(principal_ray, shell_point, screen_point, light_radius, poly_order, prev_arcs, arc_plane_normal, step_size, screen_normal, angle_vec, prev_cohef):
     """
     returns a non-trimmed scale patch based on the point (where the shell should be centered)
     
@@ -548,23 +553,21 @@ def new_make_scale(principal_ray, shell_point, screen_point, light_radius, poly_
     ##for debugging: export points so I can see wtf is happening with the weird ones
     #with open("%s_%s.points" % (angle_vec.theta, angle_vec.phi), 'wb') as outfile:
     #    outfile.write('\n'.join([str(p) for p in points]))
-
+    
     #fit the polynomial to the points:
     x = points[:, 0]
     y = points[:, 1]
     z = points[:, 2]
-
-    # check that polyfit2d returns the right coefficients (i.e. polynomial actually looks reasonable)
-    # check that coefficients are being translated properly for TaylorPoly class
-    # check that surface coming out of TaylorPoly looks like taylor polynomial function?
-    
-    coefficients = polyfit2d(x, y, z, order=poly_order)
+    coefficients, surface_is_retarded = polyfit2d(x, y, z, order=poly_order)
     order = int(numpy.sqrt(len(coefficients)))
     cohef = []
     for i in range(0, order):
         cohef.append(coefficients[i*order:(i+1)*order])
     cohef = numpy.array(cohef).copy(order='C')
-    poly = optics.taylor_poly.TaylorPoly(cohef=cohef.T, domain_radius=light_radius, domain_point=translate_to_local(screen_point))
+    real_cohef = cohef.T
+    if surface_is_retarded:
+        real_cohef = prev_cohef
+    poly = optics.taylor_poly.TaylorPoly(cohef=real_cohef, domain_radius=light_radius, domain_point=translate_to_local(screen_point))
     
     scale = optics.scale.PolyScale(
         shell_point=shell_point,
@@ -703,6 +706,9 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     light_radius = 3.0
     ##per whole the screen. So 90 steps for a 90 degree total FOV would be one step per degree
     #total_phi_steps = 90
+    
+    #TODO: get cubics (and higher) to work better in general :(
+    poly_order = 3
 
     ##calculated:
     #total_vertical_resolution = 2000
@@ -712,7 +718,7 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     #max_spacing = (float(total_vertical_resolution) / float(total_phi_steps)) * max_pixel_spot_size
     
     #create the first scale
-    center_scale = make_scale(principal_ray, initial_shell_point, initial_screen_point, light_radius, AngleVector(0.0, 0.0), optics.globals.POLY_ORDER, screen_normal)
+    center_scale = make_scale(principal_ray, initial_shell_point, initial_screen_point, light_radius, AngleVector(0.0, 0.0), poly_order, screen_normal)
     #center_scale.shell_distance_error = 0.0
     #center_scale.screen_normal = screen_normal
     #scales = [center_scale]
@@ -775,7 +781,7 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     ##upper_bound = max_spacing
         
     #phi_step = 0.05
-    final_phi = FOV/3.0#FOV/2.0
+    final_phi = FOV/2.0
     
     ##this is side to side motion
     #lateral_normal = normalize(numpy.cross(principal_ray, screen_normal))
@@ -820,13 +826,14 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
             start_time = time.time()
             
             nearby_scales = [prev_scale]
-            scale = optics.parallel.call_via_pool(process_pool, new_explore_direction, [screen_normal, prev_scale, nearby_scales, principal_ray, light_radius, optimization_normal])
+            scale = optics.parallel.call_via_pool(process_pool, new_explore_direction, [screen_normal, prev_scale, nearby_scales, principal_ray, light_radius, optimization_normal, poly_order])
             
             if stop_flag.is_set():
                 return new_scales
             
             #evaluate the new scale
-            pixel_errors = evaluate_scale(scale, prev_scale, light_radius)
+            #pixel_errors = evaluate_scale(scale, prev_scale, light_radius)
+            pixel_errors = []
             
             new_scales.append(scale)
             on_new_scale(scale)
@@ -841,9 +848,9 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     leftward_arc = []
     threads = [threading.Thread(target=grow_in_direction, args=args) for args in (\
         (upward_arc, normalize(Point3D(0.0, 1.0, -1.0))),
-#        (downward_arc, normalize(Point3D(0.0, -1.0, 1.0))),
+        (downward_arc, normalize(Point3D(0.0, -1.0, 1.0))),
         (rightward_arc, normalize(Point3D(1.0, 0.0, 0.0))),
-#        (leftward_arc, normalize(Point3D(-1.0, 0.0, 0.0)))
+        (leftward_arc, normalize(Point3D(-1.0, 0.0, 0.0)))
     )]
     
     for thread in threads:
@@ -865,6 +872,8 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     #leftward_arc.reverse()
     #ordered_scales = leftward_arc + [center_scale] + rightward_arc
     
+    poly_order = optics.globals.POLY_ORDER
+    
     def grow_quadrant(vertical_arc, horizontal_arc, scale_rows, optimization_normal):
         """
         Builds it up, horizontally row by row, from the center.
@@ -879,13 +888,14 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
                 nearby_scales = [diagonal_scale, side_scale, vertical_scale]
                 start_time = time.time()
                 #TODO: obviously put this back
-                #new_scale = optics.parallel.call_via_pool(process_pool, new_explore_direction, [screen_normal, prev_scale, nearby_scales, principal_ray, light_radius, optimization_normal])
-                new_scale = new_explore_direction(screen_normal, prev_scale, nearby_scales, principal_ray, light_radius, optimization_normal)
+                new_scale = optics.parallel.call_via_pool(process_pool, new_explore_direction, [screen_normal, prev_scale, nearby_scales, principal_ray, light_radius, optimization_normal, poly_order])
+                #new_scale = new_explore_direction(screen_normal, prev_scale, nearby_scales, principal_ray, light_radius, optimization_normal)
                 
                 if stop_flag.is_set():
                     return scale_rows
                 
-                pixel_errors = evaluate_scale(new_scale, prev_scale, light_radius)
+                #pixel_errors = evaluate_scale(new_scale, prev_scale, light_radius)
+                pixel_errors = []
                 new_horizontal_arc.append(new_scale)
                 on_new_scale(new_scale)
                 print("Finished (phi=%.4f,theta=%.4f) in %.3f    [errors=%s]" % (new_scale.angle_vec.phi, new_scale.angle_vec.theta, time.time() - start_time, pixel_errors))
@@ -915,17 +925,44 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     lower_right_scale_rows = []
     lower_left_scale_rows = []
     
-    grow_quadrant(upward_arc, rightward_arc, upper_right_scale_rows, normalize(Point3D(1.0, 0.0, 0.0)))
-#    grow_quadrant(upward_arc, leftward_arc, upper_left_scale_rows, normalize(Point3D(-1.0, 0.0, 0.0)))
-#    grow_quadrant(downward_arc, rightward_arc, lower_right_scale_rows, normalize(Point3D(1.0, 0.0, 0.0)))
-#    grow_quadrant(downward_arc, leftward_arc, lower_left_scale_rows, normalize(Point3D(-1.0, 0.0, 0.0)))
+    def upper_right_thread():
+        grow_quadrant(upward_arc, rightward_arc, upper_right_scale_rows, normalize(Point3D(1.0, 0.0, 0.0)))
+    def upper_left_thread():
+        grow_quadrant(upward_arc, leftward_arc, upper_left_scale_rows, normalize(Point3D(-1.0, 0.0, 0.0)))
+    def lower_right_thread():
+        grow_quadrant(downward_arc, rightward_arc, lower_right_scale_rows, normalize(Point3D(1.0, 0.0, 0.0)))
+    def lower_left_thread():
+        grow_quadrant(downward_arc, leftward_arc, lower_left_scale_rows, normalize(Point3D(-1.0, 0.0, 0.0)))
+        
+    threads = [threading.Thread(target=target) for target in (\
+        upper_right_thread,
+        upper_left_thread,
+        lower_right_thread,
+        lower_left_thread
+    )]
+    
+    for thread in threads:
+        thread.start()
+        
+    while True:
+        all_threads_done = True not in [t.is_alive() for t in threads]
+        if all_threads_done:
+            break
+    
+        if stop_flag.is_set():
+            return []
+        
+        time.sleep(0.1)
+        
+    for thread in threads:
+        thread.join()
     
     meshing_start_time = time.time()
     
     upper_right_arcs = create_patch_arcs(upper_right_scale_rows, light_radius, step_size=mesh_step_size)
-#    upper_left_arcs = create_patch_arcs(upper_left_scale_rows, light_radius, step_size=mesh_step_size)
-#    lower_right_arcs = create_patch_arcs(lower_right_scale_rows, light_radius, step_size=mesh_step_size)
-#    lower_left_arcs = create_patch_arcs(lower_left_scale_rows, light_radius, step_size=mesh_step_size)
+    upper_left_arcs = create_patch_arcs(upper_left_scale_rows, light_radius, step_size=mesh_step_size)
+    lower_right_arcs = create_patch_arcs(lower_right_scale_rows, light_radius, step_size=mesh_step_size)
+    lower_left_arcs = create_patch_arcs(lower_left_scale_rows, light_radius, step_size=mesh_step_size)
     
     lower_right_arcs.pop(0)
     lower_right_arcs.reverse()
@@ -943,10 +980,52 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     arcs.reverse()
     
     print("Completed meshing in %.4f seconds" % (time.time() - meshing_start_time))
+
+    mesh = optics.mesh.Mesh(mesh=optics.mesh.solid_from_arcs(arcs, Point3D(0.0, 0.0, -10.0)))
+    mesh.export("shell_high_res.stl")
+    print("Finished exporting fine mesh")
     
-    mesh = optics.mesh.Mesh(mesh=optics.mesh.mesh_from_arcs(arcs))
-    mesh.export("new_shell.stl")
-    print("Finished exporting mesh")
+    coarse_mesh_step_size = 0.5
+    upper_right_arcs = create_patch_arcs(upper_right_scale_rows, light_radius, step_size=coarse_mesh_step_size)
+    upper_left_arcs = create_patch_arcs(upper_left_scale_rows, light_radius, step_size=coarse_mesh_step_size)
+    lower_right_arcs = create_patch_arcs(lower_right_scale_rows, light_radius, step_size=coarse_mesh_step_size)
+    lower_left_arcs = create_patch_arcs(lower_left_scale_rows, light_radius, step_size=coarse_mesh_step_size)
+    
+    lower_right_arcs.pop(0)
+    lower_right_arcs.reverse()
+    right_arcs = lower_right_arcs + upper_right_arcs
+    
+    lower_left_arcs.pop(0)
+    lower_left_arcs.reverse()
+    left_arcs = lower_left_arcs + upper_left_arcs
+    
+    arcs = []
+    for i in range(0, len(left_arcs)):
+        left_arcs[i].pop(0)
+        left_arcs[i].reverse()
+        arcs.append(left_arcs[i] + right_arcs[i])
+    arcs.reverse()
+    
+    mesh = optics.mesh.Mesh(mesh=optics.mesh.solid_from_arcs(arcs, Point3D(0.0, 0.0, -10.0)))
+    mesh.export("shell_low_res.stl")
+    print("Finished exporting coarse mesh")
+    
+    #export the shape formed by the screen pixels as an STL
+    lower_right_scale_rows.pop()
+    lower_right_scale_rows.reverse()
+    right_rows = lower_right_scale_rows + upper_right_scale_rows
+    lower_left_scale_rows.pop()
+    lower_left_scale_rows.reverse()
+    left_rows = lower_left_scale_rows + upper_left_scale_rows
+    all_rows = []
+    for i in range(0, len(right_rows)):
+        left_row = left_rows[i]
+        left_row.pop(0)
+        left_row.reverse()
+        all_rows.append(left_row + right_rows[i])
+    
+    new_create_screen_mesh(all_rows).export("new_screen.stl")
+    print("Exported screen")
     
     #just so we can keep looking at them
     all_scales = set([])
@@ -1044,4 +1123,11 @@ def create_patch_arcs(scale_rows, light_radius, step_size=0.5):
     
     return arcs
     
-    
+def new_create_screen_mesh(all_rows):
+    arcs = []
+    for row in all_rows:
+        arc = []
+        for scale in row:
+            arc.append(scale.pixel_point)
+        arcs.append(arc)
+    return optics.mesh.Mesh(mesh=optics.mesh.solid_from_arcs(arcs, scale.screen_normal * -5.0))

@@ -1,3 +1,4 @@
+import sys
 import numpy
 import itertools
 import matplotlib.pyplot as plt
@@ -17,9 +18,9 @@ def polyfit2d(x, y, z, order=3):
     print "singular values of matrix", singular
     return m
 
-def main():
+def main(points_file): 
     points = []
-    f = open('pts.points', 'r')
+    f = open(points_file, 'r')
     for line in f:
         point = line.strip('[]\n').split()
         point = numpy.array(point, dtype='|S4')
@@ -38,4 +39,4 @@ def main():
     plt.show()
 
 if __name__ == '__main__':
-    main()
+    main(sys.argv[1])
