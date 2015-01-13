@@ -78,7 +78,10 @@ def polyfit2d(x, y, z, order=3):
     ij = itertools.product(range(order+1), range(order+1))
     for k, (i,j) in enumerate(ij):
         G[:,k] = x**i * y**j
-    m, _, _, _ = numpy.linalg.lstsq(G, z)
+    m, residuals, _, singular = numpy.linalg.lstsq(G, z)
+    print "coeffs", m
+    print "residuals", residuals
+    print "singular values of matrix", singular
     return m
 
 #Note--might seem a little bizarre that we are transforming everything outside of PolyShell even though the details of its inner workings should be concealed
@@ -545,11 +548,16 @@ def new_make_scale(principal_ray, shell_point, screen_point, light_radius, poly_
     ##for debugging: export points so I can see wtf is happening with the weird ones
     #with open("%s_%s.points" % (angle_vec.theta, angle_vec.phi), 'wb') as outfile:
     #    outfile.write('\n'.join([str(p) for p in points]))
-    
+
     #fit the polynomial to the points:
     x = points[:, 0]
     y = points[:, 1]
     z = points[:, 2]
+
+    # check that polyfit2d returns the right coefficients (i.e. polynomial actually looks reasonable)
+    # check that coefficients are being translated properly for TaylorPoly class
+    # check that surface coming out of TaylorPoly looks like taylor polynomial function?
+    
     coefficients = polyfit2d(x, y, z, order=poly_order)
     order = int(numpy.sqrt(len(coefficients)))
     cohef = []
@@ -767,7 +775,7 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     ##upper_bound = max_spacing
         
     #phi_step = 0.05
-    final_phi = 0.07#FOV/6.0#FOV/2.0
+    final_phi = FOV/3.0#FOV/2.0
     
     ##this is side to side motion
     #lateral_normal = normalize(numpy.cross(principal_ray, screen_normal))
@@ -833,9 +841,9 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     leftward_arc = []
     threads = [threading.Thread(target=grow_in_direction, args=args) for args in (\
         (upward_arc, normalize(Point3D(0.0, 1.0, -1.0))),
-        (downward_arc, normalize(Point3D(0.0, -1.0, 1.0))),
+#        (downward_arc, normalize(Point3D(0.0, -1.0, 1.0))),
         (rightward_arc, normalize(Point3D(1.0, 0.0, 0.0))),
-        (leftward_arc, normalize(Point3D(-1.0, 0.0, 0.0)))
+#        (leftward_arc, normalize(Point3D(-1.0, 0.0, 0.0)))
     )]
     
     for thread in threads:
@@ -908,16 +916,16 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     lower_left_scale_rows = []
     
     grow_quadrant(upward_arc, rightward_arc, upper_right_scale_rows, normalize(Point3D(1.0, 0.0, 0.0)))
-    grow_quadrant(upward_arc, leftward_arc, upper_left_scale_rows, normalize(Point3D(-1.0, 0.0, 0.0)))
-    grow_quadrant(downward_arc, rightward_arc, lower_right_scale_rows, normalize(Point3D(1.0, 0.0, 0.0)))
-    grow_quadrant(downward_arc, leftward_arc, lower_left_scale_rows, normalize(Point3D(-1.0, 0.0, 0.0)))
+#    grow_quadrant(upward_arc, leftward_arc, upper_left_scale_rows, normalize(Point3D(-1.0, 0.0, 0.0)))
+#    grow_quadrant(downward_arc, rightward_arc, lower_right_scale_rows, normalize(Point3D(1.0, 0.0, 0.0)))
+#    grow_quadrant(downward_arc, leftward_arc, lower_left_scale_rows, normalize(Point3D(-1.0, 0.0, 0.0)))
     
     meshing_start_time = time.time()
     
     upper_right_arcs = create_patch_arcs(upper_right_scale_rows, light_radius, step_size=mesh_step_size)
-    upper_left_arcs = create_patch_arcs(upper_left_scale_rows, light_radius, step_size=mesh_step_size)
-    lower_right_arcs = create_patch_arcs(lower_right_scale_rows, light_radius, step_size=mesh_step_size)
-    lower_left_arcs = create_patch_arcs(lower_left_scale_rows, light_radius, step_size=mesh_step_size)
+#    upper_left_arcs = create_patch_arcs(upper_left_scale_rows, light_radius, step_size=mesh_step_size)
+#    lower_right_arcs = create_patch_arcs(lower_right_scale_rows, light_radius, step_size=mesh_step_size)
+#    lower_left_arcs = create_patch_arcs(lower_left_scale_rows, light_radius, step_size=mesh_step_size)
     
     lower_right_arcs.pop(0)
     lower_right_arcs.reverse()
