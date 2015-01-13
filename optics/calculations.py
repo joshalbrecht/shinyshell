@@ -818,7 +818,8 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
                 return new_scales
             
             #evaluate the new scale
-            pixel_errors = evaluate_scale(scale, prev_scale, light_radius)
+            #pixel_errors = evaluate_scale(scale, prev_scale, light_radius)
+            pixel_errors = []
             
             new_scales.append(scale)
             on_new_scale(scale)
@@ -877,7 +878,8 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
                 if stop_flag.is_set():
                     return scale_rows
                 
-                pixel_errors = evaluate_scale(new_scale, prev_scale, light_radius)
+                #pixel_errors = evaluate_scale(new_scale, prev_scale, light_radius)
+                pixel_errors = []
                 new_horizontal_arc.append(new_scale)
                 on_new_scale(new_scale)
                 print("Finished (phi=%.4f,theta=%.4f) in %.3f    [errors=%s]" % (new_scale.angle_vec.phi, new_scale.angle_vec.theta, time.time() - start_time, pixel_errors))
