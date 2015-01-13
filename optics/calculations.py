@@ -541,6 +541,11 @@ def new_make_scale(principal_ray, shell_point, screen_point, light_radius, poly_
             new_arcs.append(final_arc)
         
     points = numpy.vstack(new_arcs)
+    
+    ##for debugging: export points so I can see wtf is happening with the weird ones
+    #with open("%s_%s.points" % (angle_vec.theta, angle_vec.phi), 'wb') as outfile:
+    #    outfile.write('\n'.join([str(p) for p in points]))
+    
     #fit the polynomial to the points:
     x = points[:, 0]
     y = points[:, 1]
@@ -762,7 +767,7 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     ##upper_bound = max_spacing
         
     #phi_step = 0.05
-    final_phi = FOV/6.0#FOV/2.0
+    final_phi = 0.0001#FOV/6.0#FOV/2.0
     
     ##this is side to side motion
     #lateral_normal = normalize(numpy.cross(principal_ray, screen_normal))
@@ -859,7 +864,6 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
         """
         Builds it up, horizontally row by row, from the center.
         """
-        scale_rows = []
         diagonal_scale = center_scale
         for start_scale in vertical_arc:
             new_horizontal_arc = []
@@ -889,7 +893,16 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     
     final_scale_rows = []
     grow_quadrant(upward_arc, rightward_arc, final_scale_rows, normalize(Point3D(1.0, 0.0, 0.0)))
-    ordered_scales = sum(final_scale_rows, [])
+    ordered_scales = upward_arc + rightward_arc + [center_scale]
+    all_scale_rows = [[center_scale] + rightward_arc]
+    for i in range(0, len(final_scale_rows)):
+        row = final_scale_rows[i]
+        ordered_scales += row
+        all_scale_rows.append([upward_arc[i]] + row)
+        
+    arcs = create_patch_arcs(all_scale_rows, light_radius, step_size=0.5)
+    mesh = optics.mesh.Mesh(mesh=optics.mesh.mesh_from_arcs(arcs))
+    mesh.export("new_shell.stl")
     
     ##print out a little graph of the errors of the scales so we can get a sense
     #downward_arc.reverse()
@@ -913,4 +926,63 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     #create_screen_mesh(ordered_scales).export("screen.stl")
     
     return ordered_scales
+
+#TODO: will have to put all of these arcs together in an outer loop and then pass to the mesher
+#note: should include original arc scales in these rows, and the center one
+def create_patch_arcs(scale_rows, light_radius, step_size=0.5):
+    """
+    create a set of arcs through these scales, for use when meshing
+    """
+    
+    #walk through the first vertical column and generate starting points for each arc
+    arcs = []
+    for i in range(0, len(scale_rows)-1):
+        scale = scale_rows[i][0]
+        next_scale = scale_rows[i+1][0]
+        up_vector = normalize(next_scale.shell_point - scale.shell_point)
+        end_point, arc = scale._get_arc_and_start(scale.shell_point, up_vector, step_size)
+        #remove the last point if it is too close to the next shell point
+        if numpy.linalg.norm(arc[-1] - next_scale.shell_point) < step_size:
+            arc.pop(0)
+        arcs.append(arc)
+    #just stick the last shell point on there for completeness
+    arcs[-1].append(next_scale.shell_point)
+    #concatenate all of the arcs
+    vertical_arc = numpy.concatenate(arcs)
+    
+    #create all of the horizontal arcs
+    segments_per_shell = light_radius / step_size #note: this is not EXACTLY going to be the step size, but will be close
+    arcs = []
+    current_row_idx = 0
+    for start_point in vertical_arc:
+        arc = []
+        #if we're closer to the next row, use that one instead
+        if current_row_idx < len(scale_rows) - 1:
+            if dist2(start_point, scale_rows[current_row_idx+1][0].shell_point) < dist2(start_point, scale_rows[current_row_idx][0].shell_point):
+                current_row_idx += 1
+        current_row = scale_rows[current_row_idx]
+        #walk across the row and extend the arc by a fixed number of segments per shell
+        for i in range(1, len(current_row)):
+            scale = current_row[i-1]
+            next_scale = current_row[i]
+            ray_start = scale.shell_point
+            ray_end = next_scale.shell_point
+            ray_vector = ray_end - ray_start
+            ray_length = numpy.linalg.norm(ray_vector)
+            ray_normal = ray_vector / ray_length
+            distances = numpy.linspace(0, ray_length, num=segments_per_shell, endpoint=False)
+            
+            #transform the ray into scale coordinates
+            transformed_ray_start = scale._world_to_local(ray_start)
+            transformed_ray_normal = scale._world_to_local_rotation.dot(ray_normal)
+            
+            #evaluate each point
+            for dist in distances:
+                point = dist * transformed_ray_normal + transformed_ray_start
+                point = Point3D(point[0], point[1], scale._poly.eval_poly(point[0], point[1]))
+                arc.append(scale._local_to_world(point))
+        arcs.append(arc)
+    
+    return arcs
+    
     
