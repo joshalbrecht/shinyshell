@@ -393,14 +393,16 @@ def find_scale_and_error_at_best_distance(reference_scales, principal_ray, scree
     
     return scales[best_value]
 
+#TODO: do we need more than just a cross here?
 def _generate_rays(end_point, light_radius, num_rays=11):
     """make a bundle of rays"""
     rays = []
     ray_end = end_point * 2.0
-    for y in numpy.linspace(-light_radius, light_radius, num=num_rays):
-        delta = Point3D(0, y, 0)
-        ray = Ray(delta, ray_end + delta)
-        rays.append(ray)
+    for v in numpy.linspace(-light_radius, light_radius, num=num_rays):
+        delta = Point3D(0, v, 0)
+        rays.append(Ray(delta, ray_end + delta))
+        delta = Point3D(v, 0, 0)
+        rays.append(Ray(delta, ray_end + delta))
     return rays
 
 def new_explore_direction(screen_normal, prev_scale, nearby_scales, principal_ray, light_radius, shell_growth_normal):
@@ -760,7 +762,7 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     ##upper_bound = max_spacing
         
     #phi_step = 0.05
-    final_phi = FOV/2.0
+    final_phi = FOV/6.0#FOV/2.0
     
     ##this is side to side motion
     #lateral_normal = normalize(numpy.cross(principal_ray, screen_normal))
@@ -768,7 +770,7 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     #optimization_normal = -1.0 * normalize(numpy.cross(lateral_normal, screen_normal))
     
     #optimization_normal = normalize(Point3D(0.0, 1.0, -1.0))
-    optimization_normal = normalize(Point3D(1.0, 0.0, 0.0))
+    #optimization_normal = normalize(Point3D(1.0, 0.0, 0.0))
     
     ##testing out new growth function:
     #scale = new_explore_direction(screen_normal, center_scale, principal_ray, light_radius, normalize(Point3D(0.0, 1.0, -1.0)))
@@ -785,7 +787,7 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     #import sys
     #sys.exit()
     
-    def grow_in_direction(direction, new_scales):
+    def grow_in_direction(direction, new_scales, optimization_normal):
         phi = 0.0
         prev_scale = center_scale
         while phi < final_phi:
@@ -819,10 +821,21 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
             phi = scale.angle_vec.phi
             print("Finished (phi=%.4f,theta=%.4f) in %.3f    [errors=%s]" % (phi, scale.angle_vec.theta, time.time() - start_time, pixel_errors))
         return new_scales
-    
+
     upward_arc = []
-    downward_arc = []
-    threads = [threading.Thread(target=grow_in_direction, args=args) for args in ((1.0, upward_arc), (-1.0, downward_arc))]
+    rightward_arc = []
+    threads = [threading.Thread(target=grow_in_direction, args=args) for args in (\
+        (1.0, upward_arc, normalize(Point3D(0.0, 1.0, -1.0))),
+        (1.0, rightward_arc, normalize(Point3D(1.0, 0.0, 0.0)))
+    )]
+    
+    #leftward_arc = []
+    #rightward_arc = []
+    #threads = [threading.Thread(target=grow_in_direction, args=args) for args in (\
+    #    (1.0, leftward_arc, normalize(Point3D(-1.0, 0.0, 0.0))),
+    #    (1.0, rightward_arc, normalize(Point3D(1.0, 0.0, 0.0)))
+    #)]
+    
     for thread in threads:
         thread.start()
         
@@ -838,27 +851,66 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
         
     for thread in threads:
         thread.join()
-    
-    #print out a little graph of the errors of the scales so we can get a sense
-    downward_arc.reverse()
-    ordered_scales = downward_arc + [center_scale] + upward_arc
-    print("theta  phi     focal_error")
-    for scale in ordered_scales:
-        scale.ensure_mesh()
-        #scale._calculate_rays()
-        print("%.2f   %.2f      %.5f" % (scale.angle_vec.theta, scale.angle_vec.phi, scale.focal_error))
         
-    ##a bit of a hack so we can visualize the real error:
-    #center_scale.adjacent_scale = upward_arc[0]
-    #center_scale.screen_normal = screen_normal
-        
-    #export all of the scales as one massive STL
-    meshes = [x._mesh for x in ordered_scales]
-    merged_mesh = optics.mesh.merge_meshes(meshes)
-    optics.mesh.Mesh(mesh=merged_mesh).export("all_scales.stl")
+    #leftward_arc.reverse()
+    #ordered_scales = leftward_arc + [center_scale] + rightward_arc
     
-    #export the shape formed by the screen pixels as an STL
-    create_screen_mesh(ordered_scales).export("screen.stl")
+    def grow_quadrant(vertical_arc, horizontal_arc, scale_rows, optimization_normal):
+        """
+        Builds it up, horizontally row by row, from the center.
+        """
+        scale_rows = []
+        diagonal_scale = center_scale
+        for start_scale in vertical_arc:
+            new_horizontal_arc = []
+            left_scale = start_scale
+            for bottom_scale in horizontal_arc:
+                prev_scale = left_scale
+                nearby_scales = [diagonal_scale, left_scale, bottom_scale]
+                start_time = time.time()
+                #TODO: obviously put this back
+                #new_scale = optics.parallel.call_via_pool(process_pool, new_explore_direction, [screen_normal, prev_scale, nearby_scales, principal_ray, light_radius, optimization_normal])
+                new_scale = new_explore_direction(screen_normal, prev_scale, nearby_scales, principal_ray, light_radius, optimization_normal)
+                
+                if stop_flag.is_set():
+                    return scale_rows
+                
+                pixel_errors = evaluate_scale(new_scale, prev_scale, light_radius)
+                new_horizontal_arc.append(new_scale)
+                on_new_scale(new_scale)
+                print("Finished (phi=%.4f,theta=%.4f) in %.3f    [errors=%s]" % (new_scale.angle_vec.phi, new_scale.angle_vec.theta, time.time() - start_time, pixel_errors))
+                
+                left_scale = new_scale
+                diagonal_scale = bottom_scale
+            diagonal_scale = start_scale
+            horizontal_arc = new_horizontal_arc
+            scale_rows.append(new_horizontal_arc)
+        return scale_rows
+    
+    final_scale_rows = []
+    grow_quadrant(upward_arc, rightward_arc, final_scale_rows, normalize(Point3D(1.0, 0.0, 0.0)))
+    ordered_scales = sum(final_scale_rows, [])
+    
+    ##print out a little graph of the errors of the scales so we can get a sense
+    #downward_arc.reverse()
+    #ordered_scales = downward_arc + [center_scale] + upward_arc
+    #print("theta  phi     focal_error")
+    #for scale in ordered_scales:
+    #    scale.ensure_mesh()
+    #    #scale._calculate_rays()
+    #    print("%.2f   %.2f      %.5f" % (scale.angle_vec.theta, scale.angle_vec.phi, scale.focal_error))
+    #    
+    ###a bit of a hack so we can visualize the real error:
+    ##center_scale.adjacent_scale = upward_arc[0]
+    ##center_scale.screen_normal = screen_normal
+    #    
+    ##export all of the scales as one massive STL
+    #meshes = [x._mesh for x in ordered_scales]
+    #merged_mesh = optics.mesh.merge_meshes(meshes)
+    #optics.mesh.Mesh(mesh=merged_mesh).export("all_scales.stl")
+    #
+    ##export the shape formed by the screen pixels as an STL
+    #create_screen_mesh(ordered_scales).export("screen.stl")
     
     return ordered_scales
     
