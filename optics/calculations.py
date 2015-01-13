@@ -767,7 +767,7 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     ##upper_bound = max_spacing
         
     #phi_step = 0.05
-    final_phi = 0.00001#FOV/6.0#FOV/2.0
+    final_phi = 0.07#FOV/6.0#FOV/2.0
     
     ##this is side to side motion
     #lateral_normal = normalize(numpy.cross(principal_ray, screen_normal))
@@ -864,7 +864,7 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
         scale_rows.append([center_scale] + horizontal_arc)
         diagonal_scale = center_scale
         for start_scale in vertical_arc:
-            new_horizontal_arc = [start_scale]
+            new_horizontal_arc = []
             side_scale = start_scale
             for vertical_scale in horizontal_arc:
                 prev_scale = side_scale
@@ -886,7 +886,7 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
                 diagonal_scale = vertical_scale
             diagonal_scale = start_scale
             horizontal_arc = new_horizontal_arc
-            scale_rows.append(new_horizontal_arc)
+            scale_rows.append([start_scale] + new_horizontal_arc)
         return scale_rows
     
     #final_scale_rows = []
@@ -899,7 +899,8 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     ##to get the surface oriented the correct direction
     #arcs.reverse()
     
-    mesh_step_size = 0.5
+    #mesh_step_size = 0.01
+    mesh_step_size = 0.1
     
     upper_right_scale_rows = []
     upper_left_scale_rows = []
@@ -910,6 +911,8 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     grow_quadrant(upward_arc, leftward_arc, upper_left_scale_rows, normalize(Point3D(-1.0, 0.0, 0.0)))
     grow_quadrant(downward_arc, rightward_arc, lower_right_scale_rows, normalize(Point3D(1.0, 0.0, 0.0)))
     grow_quadrant(downward_arc, leftward_arc, lower_left_scale_rows, normalize(Point3D(-1.0, 0.0, 0.0)))
+    
+    meshing_start_time = time.time()
     
     upper_right_arcs = create_patch_arcs(upper_right_scale_rows, light_radius, step_size=mesh_step_size)
     upper_left_arcs = create_patch_arcs(upper_left_scale_rows, light_radius, step_size=mesh_step_size)
@@ -930,6 +933,8 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
         left_arcs[i].reverse()
         arcs.append(left_arcs[i] + right_arcs[i])
     arcs.reverse()
+    
+    print("Completed meshing in %.4f seconds" % (time.time() - meshing_start_time))
     
     mesh = optics.mesh.Mesh(mesh=optics.mesh.mesh_from_arcs(arcs))
     mesh.export("new_shell.stl")
