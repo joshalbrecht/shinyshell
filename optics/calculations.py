@@ -767,7 +767,7 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     ##upper_bound = max_spacing
         
     #phi_step = 0.05
-    final_phi = FOV/6.0#FOV/2.0
+    final_phi = 0.00001#FOV/6.0#FOV/2.0
     
     ##this is side to side motion
     #lateral_normal = normalize(numpy.cross(principal_ray, screen_normal))
@@ -792,7 +792,7 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     #import sys
     #sys.exit()
     
-    def grow_in_direction(direction, new_scales, optimization_normal):
+    def grow_in_direction(new_scales, optimization_normal):
         phi = 0.0
         prev_scale = center_scale
         while phi < final_phi:
@@ -812,7 +812,7 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
             start_time = time.time()
             
             nearby_scales = [prev_scale]
-            scale = optics.parallel.call_via_pool(process_pool, new_explore_direction, [screen_normal, prev_scale, nearby_scales, principal_ray, light_radius, direction*optimization_normal])
+            scale = optics.parallel.call_via_pool(process_pool, new_explore_direction, [screen_normal, prev_scale, nearby_scales, principal_ray, light_radius, optimization_normal])
             
             if stop_flag.is_set():
                 return new_scales
@@ -828,18 +828,15 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
         return new_scales
 
     upward_arc = []
+    downward_arc = []
     rightward_arc = []
+    leftward_arc = []
     threads = [threading.Thread(target=grow_in_direction, args=args) for args in (\
-        (1.0, upward_arc, normalize(Point3D(0.0, 1.0, -1.0))),
-        (1.0, rightward_arc, normalize(Point3D(1.0, 0.0, 0.0)))
+        (upward_arc, normalize(Point3D(0.0, 1.0, -1.0))),
+        (downward_arc, normalize(Point3D(0.0, -1.0, 1.0))),
+        (rightward_arc, normalize(Point3D(1.0, 0.0, 0.0))),
+        (leftward_arc, normalize(Point3D(-1.0, 0.0, 0.0)))
     )]
-    
-    #leftward_arc = []
-    #rightward_arc = []
-    #threads = [threading.Thread(target=grow_in_direction, args=args) for args in (\
-    #    (1.0, leftward_arc, normalize(Point3D(-1.0, 0.0, 0.0))),
-    #    (1.0, rightward_arc, normalize(Point3D(1.0, 0.0, 0.0)))
-    #)]
     
     for thread in threads:
         thread.start()
@@ -864,13 +861,14 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
         """
         Builds it up, horizontally row by row, from the center.
         """
+        scale_rows.append([center_scale] + horizontal_arc)
         diagonal_scale = center_scale
         for start_scale in vertical_arc:
-            new_horizontal_arc = []
-            left_scale = start_scale
-            for bottom_scale in horizontal_arc:
-                prev_scale = left_scale
-                nearby_scales = [diagonal_scale, left_scale, bottom_scale]
+            new_horizontal_arc = [start_scale]
+            side_scale = start_scale
+            for vertical_scale in horizontal_arc:
+                prev_scale = side_scale
+                nearby_scales = [diagonal_scale, side_scale, vertical_scale]
                 start_time = time.time()
                 #TODO: obviously put this back
                 #new_scale = optics.parallel.call_via_pool(process_pool, new_explore_direction, [screen_normal, prev_scale, nearby_scales, principal_ray, light_radius, optimization_normal])
@@ -884,28 +882,67 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
                 on_new_scale(new_scale)
                 print("Finished (phi=%.4f,theta=%.4f) in %.3f    [errors=%s]" % (new_scale.angle_vec.phi, new_scale.angle_vec.theta, time.time() - start_time, pixel_errors))
                 
-                left_scale = new_scale
-                diagonal_scale = bottom_scale
+                side_scale = new_scale
+                diagonal_scale = vertical_scale
             diagonal_scale = start_scale
             horizontal_arc = new_horizontal_arc
             scale_rows.append(new_horizontal_arc)
         return scale_rows
     
-    final_scale_rows = []
-    grow_quadrant(upward_arc, rightward_arc, final_scale_rows, normalize(Point3D(1.0, 0.0, 0.0)))
-    ordered_scales = upward_arc + rightward_arc + [center_scale]
-    all_scale_rows = [[center_scale] + rightward_arc]
-    for i in range(0, len(final_scale_rows)):
-        row = final_scale_rows[i]
-        ordered_scales += row
-        all_scale_rows.append([upward_arc[i]] + row)
-        
-    arcs = create_patch_arcs(all_scale_rows, light_radius, step_size=0.5)
-    #to get the surface oriented the correct direction
+    #final_scale_rows = []
+    #grow_quadrant(upward_arc, rightward_arc, final_scale_rows, normalize(Point3D(1.0, 0.0, 0.0)))
+    #ordered_scales = upward_arc + rightward_arc + [center_scale]
+    #for i in range(0, len(final_scale_rows)):
+    #    row = final_scale_rows[i]
+    #    ordered_scales += row
+    #arcs = create_patch_arcs(final_scale_rows, light_radius, step_size=0.5)
+    ##to get the surface oriented the correct direction
+    #arcs.reverse()
+    
+    mesh_step_size = 0.5
+    
+    upper_right_scale_rows = []
+    upper_left_scale_rows = []
+    lower_right_scale_rows = []
+    lower_left_scale_rows = []
+    
+    grow_quadrant(upward_arc, rightward_arc, upper_right_scale_rows, normalize(Point3D(1.0, 0.0, 0.0)))
+    grow_quadrant(upward_arc, leftward_arc, upper_left_scale_rows, normalize(Point3D(-1.0, 0.0, 0.0)))
+    grow_quadrant(downward_arc, rightward_arc, lower_right_scale_rows, normalize(Point3D(1.0, 0.0, 0.0)))
+    grow_quadrant(downward_arc, leftward_arc, lower_left_scale_rows, normalize(Point3D(-1.0, 0.0, 0.0)))
+    
+    upper_right_arcs = create_patch_arcs(upper_right_scale_rows, light_radius, step_size=mesh_step_size)
+    upper_left_arcs = create_patch_arcs(upper_left_scale_rows, light_radius, step_size=mesh_step_size)
+    lower_right_arcs = create_patch_arcs(lower_right_scale_rows, light_radius, step_size=mesh_step_size)
+    lower_left_arcs = create_patch_arcs(lower_left_scale_rows, light_radius, step_size=mesh_step_size)
+    
+    lower_right_arcs.pop(0)
+    lower_right_arcs.reverse()
+    right_arcs = lower_right_arcs + upper_right_arcs
+    
+    lower_left_arcs.pop(0)
+    lower_left_arcs.reverse()
+    left_arcs = lower_left_arcs + upper_left_arcs
+    
+    arcs = []
+    for i in range(0, len(left_arcs)):
+        left_arcs[i].pop(0)
+        left_arcs[i].reverse()
+        arcs.append(left_arcs[i] + right_arcs[i])
     arcs.reverse()
+    
     mesh = optics.mesh.Mesh(mesh=optics.mesh.mesh_from_arcs(arcs))
     mesh.export("new_shell.stl")
     print("Finished exporting mesh")
+    
+    #just so we can keep looking at them
+    all_scales = set([])
+    for scale_set in (upper_right_scale_rows, upper_left_scale_rows, lower_right_scale_rows, lower_left_scale_rows):
+        for row in scale_set:
+            for scale in row:
+                all_scales.add(scale)
+        
+    ordered_scales = list(all_scales)
     
     ##print out a little graph of the errors of the scales so we can get a sense
     #downward_arc.reverse()
@@ -938,7 +975,7 @@ def create_patch_arcs(scale_rows, light_radius, step_size=0.5):
     """
     
     #walk through the first vertical column and generate starting points for each arc
-    arcs = []
+    arcs = [[scale_rows[0][0].shell_point]]
     for i in range(0, len(scale_rows)-1):
         scale = scale_rows[i][0]
         next_scale = scale_rows[i+1][0]
