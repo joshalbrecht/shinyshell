@@ -26,6 +26,18 @@ import optics.parallel
 import optics.scale
 import optics.taylor_poly
 
+FOV = math.pi / 3.0
+
+def phi_to_pixel_size(phi, theta):
+    """
+    Controls how fast the screen shrinks at the edges
+    """
+    max_phi = FOV/2.0
+    max_pixel_size = 0.080
+    min_pixel_size = 0.005
+    pixel_size_delta = max_pixel_size - min_pixel_size
+    return max_pixel_size - pixel_size_delta * (phi / max_phi)
+
 def create_arc(principal_ray, shell_point, screen_point, light_radius, angle_vec, is_horizontal=None):
     assert is_horizontal != None, "Must pass this parameter"
     
@@ -417,25 +429,41 @@ def new_explore_direction(screen_normal, prev_scale, principal_ray, light_radius
     screen_plane = Plane(prev_scale.pixel_point, screen_normal)
     screen_points = prev_scale.get_screen_points(rays, screen_plane)
     assert len(screen_points) > 0
-    screen_point = sum(screen_points) / len(screen_points)
+    focused_screen_point = sum(screen_points) / len(screen_points)
+    
+    #calculate angle_vector from shell_point
+    h_arc_normal = get_arc_plane_normal(principal_ray, True)
+    v_arc_normal = get_arc_plane_normal(principal_ray, False)
+    angle_vec = AngleVector(get_theta_from_point(principal_ray, h_arc_normal, v_arc_normal, shell_point), normalized_vector_angle(principal_ray, normalize(shell_point)))
+    
+    #constrain screen_point to actually be along the growth vector
+    screen_growth_normal = normalize(numpy.cross(arc_offset_normal, screen_normal))
+    screen_point = closestPointOnLine(focused_screen_point, prev_scale._pixel_point, prev_scale._pixel_point + screen_growth_normal)
+    
+    #cap the movement along the screen based on phi
+    #max pixel size, ppd spec, and angular delta tells us exactly how much we can move
+    pixel_size = phi_to_pixel_size((angle_vec.phi+prev_scale.angle_vec.phi)/2.0, (angle_vec.theta+prev_scale.angle_vec.theta)/2.0)
+    pixels_per_degree = 30.0
+    pixels_per_radian = pixels_per_degree * 180.0 / math.pi
+    angular_delta = normalized_vector_angle(normalize(shell_point), normalize(prev_scale._shell_point))
+    max_screen_distance = pixel_size * angular_delta * pixels_per_radian
+    
+    #if you move farther than that, the no, screen point gets truncated back towards the previous scale
+    inter_pixel_distance = numpy.linalg.norm(screen_point - prev_scale._pixel_point)
+    if inter_pixel_distance > max_screen_distance:
+        screen_point = screen_growth_normal * max_screen_distance + prev_scale._pixel_point
+        print("Trimming from %.4f to %.4f" % (inter_pixel_distance, max_screen_distance))
 
     #polyfit to make the taylor poly and return that new scale
-    scale = new_make_scale(principal_ray, shell_point, screen_point, light_radius, optics.globals.POLY_ORDER, prev_scale_arcs, arc_offset_normal, step_size, screen_normal)
+    scale = new_make_scale(principal_ray, shell_point, screen_point, light_radius, optics.globals.POLY_ORDER, prev_scale_arcs, arc_offset_normal, step_size, screen_normal, angle_vec)
     return scale
     
-def new_make_scale(principal_ray, shell_point, screen_point, light_radius, poly_order, prev_arcs, arc_plane_normal, step_size, screen_normal):
+def new_make_scale(principal_ray, shell_point, screen_point, light_radius, poly_order, prev_arcs, arc_plane_normal, step_size, screen_normal, angle_vec):
     """
     returns a non-trimmed scale patch based on the point (where the shell should be centered)
     
     note: poly_order=4 is very high quality. decrease to 2 or 3 for polynomials that are not as good at approximating, but much faster
     """
-    
-    #calculate from shell_point
-    h_arc_normal = get_arc_plane_normal(principal_ray, True)
-    v_arc_normal = get_arc_plane_normal(principal_ray, False)
-    phi = normalized_vector_angle(principal_ray, normalize(shell_point))
-    theta = get_theta_from_point(principal_ray, h_arc_normal, v_arc_normal, shell_point)
-    angle_vec = AngleVector(theta, phi)
     
     #taylor polys like to live in f(x,y) -> z
     #so build up the transformation so that the average of the shell -> screen vector and desired light vector is the z axis
@@ -587,7 +615,6 @@ def _get_best_shell_and_screen_point_from_ray(prev_scale, scale, ray, screen_pla
     
     return None, None
 
-
 def evaluate_scale(scale, prev_scale, light_radius):
     
     #make a vector between the two scales and split into a few different pieces
@@ -646,16 +673,15 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     #based on the fact that your pupil is approximately this big
     #basically defines how big the region is that we are trying to put in focus with a given scale
     light_radius = 3.0
-    fov = math.pi / 2.0
-    #per whole the screen. So 90 steps for a 90 degree total FOV would be one step per degree
-    total_phi_steps = 90
-    
-    #calculated:
-    total_vertical_resolution = 2000
-    min_pixel_spot_size = 0.005
-    min_spacing = (float(total_vertical_resolution) / float(total_phi_steps)) * min_pixel_spot_size
-    max_pixel_spot_size = 0.015
-    max_spacing = (float(total_vertical_resolution) / float(total_phi_steps)) * max_pixel_spot_size
+    ##per whole the screen. So 90 steps for a 90 degree total FOV would be one step per degree
+    #total_phi_steps = 90
+
+    ##calculated:
+    #total_vertical_resolution = 2000
+    #min_pixel_spot_size = 0.005
+    #min_spacing = (float(total_vertical_resolution) / float(total_phi_steps)) * min_pixel_spot_size
+    #max_pixel_spot_size = 0.015
+    #max_spacing = (float(total_vertical_resolution) / float(total_phi_steps)) * max_pixel_spot_size
     
     #create the first scale
     center_scale = make_scale(principal_ray, initial_shell_point, initial_screen_point, light_radius, AngleVector(0.0, 0.0), optics.globals.POLY_ORDER, screen_normal)
@@ -721,7 +747,7 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     #upper_bound = max_spacing
         
     #phi_step = 0.05
-    final_phi = fov/2.0
+    final_phi = FOV/2.0
     
     #this is side to side motion
     lateral_normal = normalize(numpy.cross(principal_ray, screen_normal))
@@ -753,9 +779,6 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
             #    theta = 3.0 * math.pi / 2.0
             #angle_vec = AngleVector(theta, phi)
             
-            if stop_flag.is_set():
-                return new_scales
-            
             #old function: used to optimize in multiple directions
             #TODO: put something like it back to have a curved screen
             #scale, error = optimize_scale_for_angle(optimization_normal, lower_bound, upper_bound, num_iterations, prev_scale, principal_ray, light_radius, angle_vec)            
@@ -766,6 +789,9 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
             start_time = time.time()
             
             scale = optics.parallel.call_via_pool(process_pool, new_explore_direction, [screen_normal, prev_scale, principal_ray, light_radius, direction*normalize(Point3D(0.0, 1.0, -1.0))])
+            
+            if stop_flag.is_set():
+                return new_scales
             
             #evaluate the new scale
             pixel_errors = evaluate_scale(scale, prev_scale, light_radius)

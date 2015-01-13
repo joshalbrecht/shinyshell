@@ -47,14 +47,15 @@ class Window(pyglet.window.Window):
         self._generate_surface = generate_surface
         self._stop_generating_surface = stop_generating_surface
         
-        #self._shell_point = Point3D(0.0, 0.0, -60.0)
-        #self._screen_point = Point3D(0.0, 40.0, -20.0)
         self._principal_ray = Point3D(0.0, 0.0, -1.0)
-        #self._screen_normal_point = self._screen_point + normalize(Point3D(0.0, -1.0, -1.0))
         
-        self._shell_point = viewer.scene_objects.ShellStartingPoint(pos=Point3D(0.0, 0.0, -60.0), color=(1.0, 0.0, 0.0), change_handler=self.on_initial_parameter_change)
-        self._screen_point = viewer.scene_objects.ScreenStartingPoint(pos=Point3D(0.0, 40.0, -20.0), color=(1.0, 0.0, 0.0), change_handler=self.on_initial_parameter_change)
-        self._screen_normal_point = viewer.scene_objects.ScreenNormalPoint(pos=self._screen_point.pos + 10.0*normalize(Point3D(0.0, -1.0, -1.0)), color=(1.0, 0.0, 0.0), change_handler=self.on_initial_parameter_change)
+        shell_point = Point3D(0.0, 0.0000000000, -82.7510541100)
+        screen_point = Point3D(0.0, 74.6275528483, -63.2394043192)
+        screen_normal_point = screen_point + 10.0 * Point3D(0., -0.9850546720, 0.1722419612)
+        
+        self._shell_point = viewer.scene_objects.ShellStartingPoint(pos=shell_point, color=(1.0, 0.0, 0.0), change_handler=self.on_initial_parameter_change)
+        self._screen_point = viewer.scene_objects.ScreenStartingPoint(pos=screen_point, color=(1.0, 0.0, 0.0), change_handler=self.on_initial_parameter_change)
+        self._screen_normal_point = viewer.scene_objects.ScreenNormalPoint(pos=screen_normal_point, color=(1.0, 0.0, 0.0), change_handler=self.on_initial_parameter_change)
         
         self.on_done_moving_things()
         
@@ -69,9 +70,9 @@ class Window(pyglet.window.Window):
         self.scales = []
         self._stop_generating_surface()
         screen_normal = normalize(self._screen_normal_point.pos - self._screen_point.pos)
-        print("Shell: %s" % (self._shell_point.pos))
-        print("Screen: %s" % (self._screen_point.pos))
-        print("Normal: %s" % (screen_normal))
+        print "shell_point = Point3D(0.0, %.10f, %.10f)" % (self._shell_point.pos[1], self._shell_point.pos[2])
+        print "screen_point = Point3D(0.0, %.10f, %.10f)" % (self._screen_point.pos[1], self._screen_point.pos[2])
+        print "screen_normal_point = screen_point + 10.0 * Point3D(0., %.10f, %.10f)" % (screen_normal[1], screen_normal[2])
         self._generate_surface(self._shell_point.pos, self._screen_point.pos, screen_normal, self._principal_ray, on_done, on_new_scale)
 
     def on_draw(self):
