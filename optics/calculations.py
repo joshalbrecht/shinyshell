@@ -78,8 +78,8 @@ def polyfit2d(x, y, z, order=3):
     ij = itertools.product(range(order+1), range(order+1))
     for k, (i,j) in enumerate(ij):
         G[:,k] = x**i * y**j
-    m, _, _, _ = numpy.linalg.lstsq(G, z)
-    return m
+    m, residuals, _, _ = numpy.linalg.lstsq(G, z)
+    return m, sum(residuals) > 1.0
 
 #Note--might seem a little bizarre that we are transforming everything outside of PolyShell even though the details of its inner workings should be concealed
 #but it's for efficiency reasons--matrix multiplying a bajillion points into the correct space is going to be way slower than just
@@ -125,7 +125,7 @@ def make_scale(principal_ray, shell_point, screen_point, light_radius, angle_vec
     x = points[:, 0]
     y = points[:, 1]
     z = points[:, 2]
-    coefficients = polyfit2d(x, y, z, order=poly_order)
+    coefficients, surface_is_retarded = polyfit2d(x, y, z, order=poly_order)
     order = int(numpy.sqrt(len(coefficients)))
     cohef = []
     for i in range(0, order):
@@ -477,10 +477,10 @@ def new_explore_direction(screen_normal, prev_scale, nearby_scales, principal_ra
         print("Using max distance because this shell sucks :(")
 
     #polyfit to make the taylor poly and return that new scale
-    scale = new_make_scale(principal_ray, shell_point, screen_point, light_radius, poly_order, prev_scale_arcs, arc_offset_normal, step_size, screen_normal, angle_vec)
+    scale = new_make_scale(principal_ray, shell_point, screen_point, light_radius, poly_order, prev_scale_arcs, arc_offset_normal, step_size, screen_normal, angle_vec, prev_scale._poly.get_cohef())
     return scale
     
-def new_make_scale(principal_ray, shell_point, screen_point, light_radius, poly_order, prev_arcs, arc_plane_normal, step_size, screen_normal, angle_vec):
+def new_make_scale(principal_ray, shell_point, screen_point, light_radius, poly_order, prev_arcs, arc_plane_normal, step_size, screen_normal, angle_vec, prev_cohef):
     """
     returns a non-trimmed scale patch based on the point (where the shell should be centered)
     
@@ -558,13 +558,16 @@ def new_make_scale(principal_ray, shell_point, screen_point, light_radius, poly_
     x = points[:, 0]
     y = points[:, 1]
     z = points[:, 2]
-    coefficients = polyfit2d(x, y, z, order=poly_order)
+    coefficients, surface_is_retarded = polyfit2d(x, y, z, order=poly_order)
     order = int(numpy.sqrt(len(coefficients)))
     cohef = []
     for i in range(0, order):
         cohef.append(coefficients[i*order:(i+1)*order])
     cohef = numpy.array(cohef).copy(order='C')
-    poly = optics.taylor_poly.TaylorPoly(cohef=cohef.T, domain_radius=light_radius, domain_point=translate_to_local(screen_point))
+    real_cohef = cohef.T
+    if surface_is_retarded:
+        real_cohef = prev_cohef
+    poly = optics.taylor_poly.TaylorPoly(cohef=real_cohef, domain_radius=light_radius, domain_point=translate_to_local(screen_point))
     
     scale = optics.scale.PolyScale(
         shell_point=shell_point,
