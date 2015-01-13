@@ -405,7 +405,7 @@ def _generate_rays(end_point, light_radius, num_rays=11):
         rays.append(Ray(delta, ray_end + delta))
     return rays
 
-def new_explore_direction(screen_normal, prev_scale, nearby_scales, principal_ray, light_radius, shell_growth_normal):
+def new_explore_direction(screen_normal, prev_scale, nearby_scales, principal_ray, light_radius, shell_growth_normal, poly_order):
     """
     shell_growth_normal is roughly the direction that we want grow. Basically, the normal between the previous two scales.
     """
@@ -469,7 +469,7 @@ def new_explore_direction(screen_normal, prev_scale, nearby_scales, principal_ra
         print("Trimming from %.4f to %.4f" % (inter_pixel_distance, max_screen_distance))
 
     #polyfit to make the taylor poly and return that new scale
-    scale = new_make_scale(principal_ray, shell_point, screen_point, light_radius, optics.globals.POLY_ORDER, prev_scale_arcs, arc_offset_normal, step_size, screen_normal, angle_vec)
+    scale = new_make_scale(principal_ray, shell_point, screen_point, light_radius, poly_order, prev_scale_arcs, arc_offset_normal, step_size, screen_normal, angle_vec)
     return scale
     
 def new_make_scale(principal_ray, shell_point, screen_point, light_radius, poly_order, prev_arcs, arc_plane_normal, step_size, screen_normal, angle_vec):
@@ -695,6 +695,9 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     light_radius = 3.0
     ##per whole the screen. So 90 steps for a 90 degree total FOV would be one step per degree
     #total_phi_steps = 90
+    
+    #TODO: get cubics (and higher) to work better in general :(
+    poly_order = 3
 
     ##calculated:
     #total_vertical_resolution = 2000
@@ -704,7 +707,7 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     #max_spacing = (float(total_vertical_resolution) / float(total_phi_steps)) * max_pixel_spot_size
     
     #create the first scale
-    center_scale = make_scale(principal_ray, initial_shell_point, initial_screen_point, light_radius, AngleVector(0.0, 0.0), optics.globals.POLY_ORDER, screen_normal)
+    center_scale = make_scale(principal_ray, initial_shell_point, initial_screen_point, light_radius, AngleVector(0.0, 0.0), poly_order, screen_normal)
     #center_scale.shell_distance_error = 0.0
     #center_scale.screen_normal = screen_normal
     #scales = [center_scale]
@@ -767,7 +770,7 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     ##upper_bound = max_spacing
         
     #phi_step = 0.05
-    final_phi = FOV/6.0#FOV/2.0
+    final_phi = FOV/2.0
     
     ##this is side to side motion
     #lateral_normal = normalize(numpy.cross(principal_ray, screen_normal))
@@ -812,7 +815,7 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
             start_time = time.time()
             
             nearby_scales = [prev_scale]
-            scale = optics.parallel.call_via_pool(process_pool, new_explore_direction, [screen_normal, prev_scale, nearby_scales, principal_ray, light_radius, optimization_normal])
+            scale = optics.parallel.call_via_pool(process_pool, new_explore_direction, [screen_normal, prev_scale, nearby_scales, principal_ray, light_radius, optimization_normal, poly_order])
             
             if stop_flag.is_set():
                 return new_scales
@@ -858,6 +861,8 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     #leftward_arc.reverse()
     #ordered_scales = leftward_arc + [center_scale] + rightward_arc
     
+    poly_order = optics.globals.POLY_ORDER
+    
     def grow_quadrant(vertical_arc, horizontal_arc, scale_rows, optimization_normal):
         """
         Builds it up, horizontally row by row, from the center.
@@ -872,7 +877,7 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
                 nearby_scales = [diagonal_scale, side_scale, vertical_scale]
                 start_time = time.time()
                 #TODO: obviously put this back
-                new_scale = optics.parallel.call_via_pool(process_pool, new_explore_direction, [screen_normal, prev_scale, nearby_scales, principal_ray, light_radius, optimization_normal])
+                new_scale = optics.parallel.call_via_pool(process_pool, new_explore_direction, [screen_normal, prev_scale, nearby_scales, principal_ray, light_radius, optimization_normal, poly_order])
                 #new_scale = new_explore_direction(screen_normal, prev_scale, nearby_scales, principal_ray, light_radius, optimization_normal)
                 
                 if stop_flag.is_set():
