@@ -901,6 +901,8 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
         all_scale_rows.append([upward_arc[i]] + row)
         
     arcs = create_patch_arcs(all_scale_rows, light_radius, step_size=0.5)
+    #to get the surface oriented the correct direction
+    arcs.reverse()
     mesh = optics.mesh.Mesh(mesh=optics.mesh.mesh_from_arcs(arcs))
     mesh.export("new_shell.stl")
     
@@ -973,14 +975,15 @@ def create_patch_arcs(scale_rows, light_radius, step_size=0.5):
             distances = numpy.linspace(0, ray_length, num=segments_per_shell, endpoint=False)
             
             #transform the ray into scale coordinates
-            transformed_ray_start = scale._world_to_local(ray_start)
+            transformed_arc_start = scale._world_to_local(start_point)
             transformed_ray_normal = scale._world_to_local_rotation.dot(ray_normal)
             
             #evaluate each point
             for dist in distances:
-                point = dist * transformed_ray_normal + transformed_ray_start
+                point = dist * transformed_ray_normal + transformed_arc_start
                 point = Point3D(point[0], point[1], scale._poly.eval_poly(point[0], point[1]))
                 arc.append(scale._local_to_world(point))
+            start_point = arc[-1]
         arcs.append(arc)
     
     return arcs
