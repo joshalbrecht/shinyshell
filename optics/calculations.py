@@ -767,7 +767,7 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     ##upper_bound = max_spacing
         
     #phi_step = 0.05
-    final_phi = 0.0001#FOV/6.0#FOV/2.0
+    final_phi = FOV/6.0#FOV/2.0
     
     ##this is side to side motion
     #lateral_normal = normalize(numpy.cross(principal_ray, screen_normal))
@@ -905,6 +905,7 @@ def create_surface_via_scales(initial_shell_point, initial_screen_point, screen_
     arcs.reverse()
     mesh = optics.mesh.Mesh(mesh=optics.mesh.mesh_from_arcs(arcs))
     mesh.export("new_shell.stl")
+    print("Finished exporting mesh")
     
     ##print out a little graph of the errors of the scales so we can get a sense
     #downward_arc.reverse()
@@ -954,10 +955,18 @@ def create_patch_arcs(scale_rows, light_radius, step_size=0.5):
     
     #create all of the horizontal arcs
     segments_per_shell = light_radius / step_size #note: this is not EXACTLY going to be the step size, but will be close
+    scale = scale_rows[0][0]
+    next_scale = scale_rows[0][1]
+    ray_start = scale.shell_point
+    ray_end = next_scale.shell_point
+    ray_normal = normalize(ray_end - ray_start)
+    distances = numpy.linspace(0, numpy.linalg.norm(ray_end - ray_start), num=segments_per_shell, endpoint=True)
+    distances = list(distances)
+    distances.pop(0)
     arcs = []
     current_row_idx = 0
     for start_point in vertical_arc:
-        arc = []
+        arc = [start_point]
         #if we're closer to the next row, use that one instead
         if current_row_idx < len(scale_rows) - 1:
             if dist2(start_point, scale_rows[current_row_idx+1][0].shell_point) < dist2(start_point, scale_rows[current_row_idx][0].shell_point):
@@ -969,10 +978,7 @@ def create_patch_arcs(scale_rows, light_radius, step_size=0.5):
             next_scale = current_row[i]
             ray_start = scale.shell_point
             ray_end = next_scale.shell_point
-            ray_vector = ray_end - ray_start
-            ray_length = numpy.linalg.norm(ray_vector)
-            ray_normal = ray_vector / ray_length
-            distances = numpy.linspace(0, ray_length, num=segments_per_shell, endpoint=False)
+            ray_normal = normalize(ray_end - ray_start)
             
             #transform the ray into scale coordinates
             transformed_arc_start = scale._world_to_local(start_point)
