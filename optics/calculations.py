@@ -26,7 +26,7 @@ import optics.parallel
 import optics.scale
 import optics.taylor_poly
 
-FOV = math.pi / 3.0
+FOV = math.pi / 4.0
 
 def phi_to_pixel_size(phi, theta):
     """
