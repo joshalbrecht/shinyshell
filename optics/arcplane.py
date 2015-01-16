@@ -25,7 +25,7 @@ class ArcPlane(object):
             base_plane_normal = Point3D(1.0, 0.0, 0.0)
         else:
             self.angle = self.rho
-            self.rotation_axis = Point3D(1.0, 0.0, 0.0)
+            self.rotation_axis = Point3D(-1.0, 0.0, 0.0)
             base_plane_normal = Point3D(0.0, 1.0, 0.0)
             
         self.local_to_world_rotation_matrix = numpy.zeros((3,3))

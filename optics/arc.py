@@ -104,12 +104,12 @@ def grow_arc(shell_point, screen_point, screen_normal, prev_screen_point, arc_pl
     roots = numpy.real(numpy.polynomial.polynomial.polyroots(coefficients - line_poly))
     positive_roots = [r for r in roots if r > 0]
     
-    #plt.plot(points[:,0], points[:, 1],"r")
-    #plt.plot(points[:,0], arc._poly(points[:, 0]),"b")
-    #plt.plot(points[:,0], numpy.polynomial.polynomial.Polynomial(line_poly)(points[:,0]), "g-")
-    #plt.plot(projected_origin[0], projected_origin[1],"ro")
-    #plt.plot(projected_screen_point[0], projected_screen_point[1],"bo")
-    #plt.show()
+    plt.plot(points[:,0], points[:, 1],"r")
+    plt.plot(points[:,0], arc._poly(points[:, 0]),"b")
+    plt.plot(points[:,0], numpy.polynomial.polynomial.Polynomial(line_poly)(points[:,0]), "g-")
+    plt.plot(projected_origin[0], projected_origin[1],"ro")
+    plt.plot(projected_screen_point[0], projected_screen_point[1],"bo")
+    plt.show()
     
     if len(positive_roots) <= 0:
         x_values = numpy.array([0.0, 80.0])
