@@ -72,7 +72,7 @@ def grow_arc(shell_point, screen_point, screen_normal, prev_screen_point, arc_pl
     def f(point, t):
         point_to_screen_vec = normalize(projected_screen_point - point)
         surface_normal = normalize(point_to_screen_vec + desired_light_direction_off_screen_towards_eye)
-        derivative = Point2D(surface_normal[1], -surface_normal[0])
+        derivative = direction * Point2D(surface_normal[1], -surface_normal[0])
         return derivative
     
     #TODO: this is a pretty arbitrary, pointlessly high max_t
@@ -153,6 +153,7 @@ class Arc(object):
         
         shell_to_screen_normal = normalize(screen_point - shell_point)
         angle = normalized_vector_angle(shell_to_screen_normal, Point2D(0.0, 1.0))
+        angle = 0.0
         self._local_to_plane_rotation = numpy.array([[math.cos(angle), -math.sin(angle)], [math.sin(angle), math.cos(angle)]])
         self._plane_to_local_rotation = numpy.linalg.inv(self._local_to_plane_rotation)
         

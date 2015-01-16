@@ -56,7 +56,7 @@ def create_rib_arcs(initial_shell_point, initial_screen_point, screen_normal, pr
     vertical_first = True
     
     #calculated based on light radius. how far we should step between each arc basically
-    angle_step = math.atan(optics.globals.LIGHT_RADIUS / initial_shell_point[2])
+    angle_step = math.fabs(math.atan(optics.globals.LIGHT_RADIUS / initial_shell_point[2]))
     
     #create the spine halves
     if vertical_first:
