@@ -153,7 +153,6 @@ class Arc(object):
         
         shell_to_screen_normal = normalize(screen_point - shell_point)
         angle = normalized_vector_angle(shell_to_screen_normal, Point2D(0.0, 1.0))
-        angle = 0.0
         self._local_to_plane_rotation = numpy.array([[math.cos(angle), -math.sin(angle)], [math.sin(angle), math.cos(angle)]])
         self._plane_to_local_rotation = numpy.linalg.inv(self._local_to_plane_rotation)
         
@@ -180,7 +179,9 @@ class Arc(object):
         Just checks for the derivative at x
         """
         transformed_point = self._plane_to_local(point)
-        return rotate_90(normalize(Point2D(self.direction * 1.0, self._derivative(transformed_point[0]))))
+        local_normal = rotate_90(normalize(Point2D(1.0, self._derivative(transformed_point[0]))))
+        reflected_point = Point2D(self.direction * local_normal[0], local_normal[1])
+        return self._local_to_plane_rotation.dot(reflected_point)
     
     def fast_arc_plane_intersection(self, ray):
         """

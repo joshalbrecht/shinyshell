@@ -63,10 +63,10 @@ def create_rib_arcs(initial_shell_point, initial_screen_point, screen_normal, pr
         primary_arc_plane = optics.arcplane.ArcPlane(mu=0.0)
     else:
         primary_arc_plane = optics.arcplane.ArcPlane(rho=0.0)
-    spines = [grow_axis(initial_shell_point, initial_screen_point, screen_normal, primary_arc_plane, direction, angle_step, on_new_arc) for direction in (BACKWARD, FORWARD)]
+    spines = [grow_axis(initial_shell_point, initial_screen_point, screen_normal, primary_arc_plane, direction, angle_step, on_new_arc) for direction in (FORWARD, BACKWARD)]
     
     #starting from each of the end points, create some more arcs
-    all_arcs = list()
+    all_arcs = spines[0] + spines[1]
     points = [(arc.start_point, arc.screen_point) for arc in all_arcs][1:] #trims one from the start so we don't duplicate the origin
     for shell_point, screen_point in points:
         all_arcs += grow_axis(shell_point, screen_point, screen_normal, arc_plane, FORWARD, angle_step, on_new_arc)
