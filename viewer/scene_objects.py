@@ -96,7 +96,7 @@ class RenderableArc(SceneObject):
     def _calculate_rays(self):
         transform = self.arc.arc_plane.local_to_world
         self.rays = []
-        rays = optics.new_calculations._generate_rays(self.arc)
+        rays = optics.new_calculations._generate_rays(self.arc, self.arc.shell_point)
         intersections, screen_points = optics.new_calculations.cast_rays_on_to_screen(rays, [self.arc])
         for i in range(0, len(rays)):
             intersection = intersections[i]

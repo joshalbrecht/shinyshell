@@ -112,8 +112,7 @@ def grow_axis(initial_shell_point, initial_screen_point, screen_normal, arc_plan
         focal_screen_point = get_focal_point(arc)
     return arcs
 
-def _generate_rays(arc):
-    main_ray_vector = arc.shell_point
+def _generate_rays(arc, main_ray_vector):
     directions = get_spaced_points(arc.start_point, arc.end_point)
     rays = []
     for direction in directions:
@@ -128,7 +127,7 @@ def get_focal_point(arc):
     """
     if FORCE_FLAT_SCREEN:
         #just finds the average location of all of the places where the rays hit
-        rays = _generate_rays(arc)
+        rays = _generate_rays(arc, arc.end_point)
         intersections, screen_points = cast_rays_on_to_screen(rays, [arc])
         filtered_points = numpy.array([p for p in screen_points if p != None])
         return sum(filtered_points) / len(filtered_points)
