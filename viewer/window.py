@@ -42,6 +42,7 @@ class Window(pyglet.window.Window):
         self.sections = []
         
         self.scales = []
+        self.arcs = []
 
         self._view_focal_error = False # toggles between focal error and shell distance error using "E" key
         self._generate_surface = generate_surface
@@ -63,17 +64,17 @@ class Window(pyglet.window.Window):
         pass
         
     def on_done_moving_things(self):
-        def on_done(scales):
-            self.scales = scales
-        def on_new_scale(scale):
-            self.scales.append(scale)
-        self.scales = []
+        def on_done(arcs):
+            self.arcs = [optics.scene_objects.RenderableArc(arc) for arc in arcs]
+        def on_new_arc(arc):
+            self.arcs.append(optics.scene_objects.RenderableArc(arc))
+        self.arcs = []
         self._stop_generating_surface()
         screen_normal = normalize(self._screen_normal_point.pos - self._screen_point.pos)
         print "shell_point = Point3D(0.0, %.10f, %.10f)" % (self._shell_point.pos[1], self._shell_point.pos[2])
         print "screen_point = Point3D(0.0, %.10f, %.10f)" % (self._screen_point.pos[1], self._screen_point.pos[2])
         print "screen_normal_point = screen_point + 10.0 * Point3D(0., %.10f, %.10f)" % (screen_normal[1], screen_normal[2])
-        self._generate_surface(self._shell_point.pos, self._screen_point.pos, screen_normal, self._principal_ray, on_done, on_new_scale)
+        self._generate_surface(self._shell_point.pos, self._screen_point.pos, screen_normal, self._principal_ray, on_done, on_new_arc)
 
     def on_draw(self):
         self.render()
@@ -301,8 +302,8 @@ class Window(pyglet.window.Window):
             section.render()
             
         self._set_scale_colors_by_quality(self._view_focal_error)
-        for scale in self.scales:
-            scale.render()
+        for arc in self.arcs:
+            arc.render()
             
         self._shell_point.render()
         self._screen_point.render()

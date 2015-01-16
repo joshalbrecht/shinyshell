@@ -23,3 +23,7 @@ QUALITY_MODE = HIGH_QUALITY_MODE
 #    POLY_ORDER = 2
 
 POLY_ORDER = 2
+
+#based on the fact that your pupil is approximately this big
+#basically defines how big the region is that we are trying to put in focus with a given patch
+LIGHT_RADIUS = 3.0

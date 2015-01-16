@@ -65,6 +65,21 @@ class SceneObject(object):
                     best_obj = obj
         return best_obj
     
+class RenderableArc(SceneObject):
+    
+    def __init__(self, arc, **kwargs):
+        SceneObject.__init__(self, **kwargs)
+        self.arc = arc
+        self.points = arc.points()
+        
+    def render(self):
+        SceneObject.render(self)
+        OpenGL.GL.glPointSize(5.0);
+        OpenGL.GL.glBegin(OpenGL.GL.GL_POINTS)
+        for point in self.points:
+            OpenGL.GL.glVertex3f(*point)
+        OpenGL.GL.glEnd()
+    
 class MovablePoint(SceneObject):
     def render(self):
         SceneObject.render(self)

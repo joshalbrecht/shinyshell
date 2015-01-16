@@ -100,6 +100,10 @@ def get_arc_plane_normal(principal_ray, is_horizontal):
         base_arc_ray = Point3D(0.0, 1.0, 0.0)
     return ray_rotation.dot(base_arc_ray)
 
+PRINCIPAL_RAY = Point3D(0.0, 0.0, -1.0)
+_H_ARC_NORMAL = get_arc_plane_normal(PRINCIPAL_RAY, True)
+_V_ARC_NORMAL = get_arc_plane_normal(PRINCIPAL_RAY, False)
+
 def normalize(a):
     #print inspect.getframeinfo(inspect.currentframe().f_back)[2]
     return a / numpy.linalg.norm(a)
@@ -212,3 +216,32 @@ def closestPointOnLine(p, v, w):
 
 def distToSegment(p, v, w):
     return math.sqrt(distToSegmentSquared(p, v, w))
+
+def calculate_determinant(a, b):
+    return a[0] * b[1] - a[1] * b[0]
+
+def rotate_90(point):
+    return Point2D(-point[1], point[0])
+
+def intersect_lines(line1, line2):
+    xdiff = (line1[0][0] - line1[1][0], line2[0][0] - line2[1][0])
+    ydiff = (line1[0][1] - line1[1][1], line2[0][1] - line2[1][1])
+
+    div = calculate_determinant(xdiff, ydiff)
+    if div == 0:
+       return None, None
+
+    d = (calculate_determinant(*line1), calculate_determinant(*line2))
+    x = calculate_determinant(d, xdiff) / div
+    y = calculate_determinant(d, ydiff) / div
+    return x, y
+
+def get_spaced_points(start, end, num=10):
+    vector = end - start
+    return [start + scale * vector for scale in numpy.linspace(0.0, 1.0, num)]
+    
+
+def get_angle_vec_from_point(point):
+    return AngleVector(
+        get_theta_from_point(PRINCIPAL_RAY, _H_ARC_NORMAL, _V_ARC_NORMAL, point),
+        normalized_vector_angle(PRINCIPAL_RAY, normalize(point)))

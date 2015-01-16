@@ -15,7 +15,7 @@ class ArcPlane(object):
     """
     
     def __init__(self, rho=None, mu=None):
-        assert (rho == None) != (mu != None), "Exactly one of rho or mu must be None"
+        assert (rho == None) != (mu == None), "Exactly one of rho or mu must be None"
         self.rho = rho
         self.mu = mu
         
@@ -29,8 +29,8 @@ class ArcPlane(object):
             base_plane_normal = Point3D(0.0, 1.0, 0.0)
             
         self.local_to_world_rotation_matrix = numpy.zeros((3,3))
-        self.world_to_local_rotation_matrix = numpy.linalg.inv(self.local_to_world_rotation_matrix)
         optics.rotation_matrix.R_axis_angle(self.local_to_world_rotation_matrix, self.rotation_axis, self.angle)
+        self.world_to_local_rotation_matrix = numpy.linalg.inv(self.local_to_world_rotation_matrix)
         base_view_normal = Point3D(0.0, 0.0, -1.0)
         self.view_normal = self.local_to_world_rotation_matrix.dot(base_view_normal)
         self.normal = self.local_to_world_rotation_matrix.dot(base_view_normal)
@@ -43,8 +43,7 @@ class ArcPlane(object):
         be careful not to call this with things that should not be projected
         on to the plane.
         """
-        projected_point = blah
-        flat_point = self.world_to_local_rotation_matrix.dot(projected_point)
+        flat_point = self.world_to_local_rotation_matrix.dot(point)
         if self.rho == None:
             return Point2D(-flat_point[2], flat_point[1])
         else:
@@ -59,5 +58,5 @@ class ArcPlane(object):
             flat_point = Point3D(0.0, point[1], -point[0])
         else:
             flat_point = Point3D(point[0], 0.0, -point[1])
-        self.local_to_world_rotation_matrix.dot(flat_point)
+        return self.local_to_world_rotation_matrix.dot(flat_point)
     

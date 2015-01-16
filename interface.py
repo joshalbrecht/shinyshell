@@ -28,6 +28,7 @@ pyximport.install()
 #this is the one thing that is allowed to import *
 from optics.base import *
 import optics.calculations
+import optics.new_calculations
 import viewer.window
 
 NUM_PROCESSES = 4
@@ -54,8 +55,10 @@ def generate_surface(shell_point, screen_point, screen_normal, principal_ray, on
     process_pool = multiprocessing.Pool(NUM_PROCESSES)
     
     def calculate():
-        scales = optics.calculations.create_surface_via_scales(shell_point, screen_point, screen_normal, principal_ray, process_pool, stop_flag, on_new_scale)
-        on_done(scales)
+        #scales = optics.calculations.create_surface_via_scales(shell_point, screen_point, screen_normal, principal_ray, process_pool, stop_flag, on_new_scale)
+        #on_done(scales)
+        arcs = optics.new_calculations.create_rib_arcs(shell_point, screen_point, screen_normal, principal_ray, process_pool, stop_flag, on_new_scale)
+        on_done(arcs)
     
     master_thread = threading.Thread(target=calculate)
     master_thread.start()

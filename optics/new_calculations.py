@@ -33,7 +33,6 @@ FORCE_FLAT_SCREEN = True
 FOV = math.pi / 2.0
 
 ORIGIN = Point3D(0.0, 0.0, 0.0)
-PRINCIPAL_RAY = Point3D(0.0, 0.0, -1.0)
 FORWARD = 1.0
 BACKWARD = -1.0
 
@@ -56,18 +55,14 @@ def create_rib_arcs(initial_shell_point, initial_screen_point, screen_normal, pr
     #temporary parameter. Defines whether we make the spine vertically or horizontally
     vertical_first = True
     
-    #based on the fact that your pupil is approximately this big
-    #basically defines how big the region is that we are trying to put in focus with a given patch
-    light_radius = 3.0
-    
     #calculated based on light radius. how far we should step between each arc basically
-    angle_step = math.atan(light_radius, initial_shell_point[2])
+    angle_step = math.atan(optics.globals.LIGHT_RADIUS / initial_shell_point[2])
     
     #create the spine halves
     if vertical_first:
-        primary_arc_plane = ArcPlane(mu=0.0)
+        primary_arc_plane = optics.arcplane.ArcPlane(mu=0.0)
     else:
-        primary_arc_plane = ArcPlane(rho=0.0)
+        primary_arc_plane = optics.arcplane.ArcPlane(rho=0.0)
     spines = [grow_axis(initial_shell_point, initial_screen_point, screen_normal, primary_arc_plane, direction, angle_step) for direction in (FORWARD, BACKWARD)]
     
     #starting from each of the end points, create some more arcs
@@ -106,9 +101,9 @@ def grow_axis(initial_shell_point, initial_screen_point, screen_normal, arc_plan
     while angle < FOV:
         angle += angle_step
         if arc_plane.rho == None:
-            end_arc_plane = ArcPlane(rho=angle)
+            end_arc_plane = optics.arcplane.ArcPlane(rho=angle)
         else:
-            end_arc_plane = ArcPlane(mu=angle)
+            end_arc_plane = optics.arcplane.ArcPlane(mu=angle)
         arc = optics.arc.grow_arc(shell_point, focal_screen_point, transformed_screen_normal, prev_screen_point, arc_plane, end_arc_plane)
         arcs.append(arc)
         shell_point = arc.end_point
@@ -122,16 +117,19 @@ def get_focal_point(arc):
     """
     if FORCE_FLAT_SCREEN:
         #just finds the average location of all of the places where the rays hit
-        rays = blah
+        main_ray_vector = arc.shell_point
+        directions = get_spaced_points(arc.start_point, arc.end_point)
+        rays = []
+        for direction in directions:
+            start_point = direction - main_ray_vector
+            end_point = start_point + 2.0 * main_ray_vector
+            rays.append(Ray(start_point, end_point))
         screen_points = cast_rays_on_to_screen(rays, [arc])
         filtered_points = [p for p in screen_points if p != None]
         return sum(filtered_points) / len(filtered_points)
     else:
         #calculate based on the bundle of rays.
         raise NotImplementedError()
-    
-def rotate_90(point):
-    return Point2D(-point[1], point[0])
 
 def cast_rays_on_to_screen(rays, arcs, screen=None):
     """
@@ -147,16 +145,15 @@ def cast_rays_on_to_screen(rays, arcs, screen=None):
                 screen_points.append(None)
             else:
                 normal = arc.fast_normal(intersection)
-                
-                screen_points.append(blah)
+                reverse_ray_direction = normalize(ray.start - ray.end)
+                midpoint = closestPointOnLine(reverse_ray_direction, Point2D(0.0, 0.0), normal)
+                reflection_direction = (2.0 * (midpoint - reverse_ray_direction)) + reverse_ray_direction
+                ray_to_screen_end = intersection + reflection_length * reflection_direction
+                screen_intersection = intersect_lines(intersection, ray_to_screen_end, screen_line_start, screen_line_end)
+                screen_points.append(screen_intersection)
         return screen_points
     else:
         #calculate based on the bundle of rays.
         raise NotImplementedError()
     
-_H_ARC_NORMAL = get_arc_plane_normal(PRINCIPAL_RAY, True)
-_V_ARC_NORMAL = get_arc_plane_normal(PRINCIPAL_RAY, False)
-def get_angle_vec_from_point(point):
-    return AngleVector(
-        get_theta_from_point(PRINCIPAL_RAY, _H_ARC_NORMAL, _V_ARC_NORMAL, point),
-        normalized_vector_angle(PRINCIPAL_RAY, normalize(point)))
+

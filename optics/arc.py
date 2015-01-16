@@ -1,8 +1,26 @@
 
-import numpy
+import os
+import sys
+import time
+import math
+import itertools
+import threading
+import traceback
+import string
+import random
+import pickle
 
+import numpy
+import scipy.integrate
+import scipy.optimize
+
+#this is the one thing that is allowed to import *
 from optics.base import *
 import optics.globals
+import optics.utils
+import optics.parallel
+import optics.scale
+import optics.taylor_poly
 import optics.rotation_matrix
 
 #TODO: implement flatness_falloff. make a function that defines the derivative given some parameters, then use both of them for the real derivative function
@@ -43,18 +61,20 @@ def grow_arc(shell_point, screen_point, screen_normal, prev_screen_point, arc_pl
     projected_screen_point = arc._plane_to_local(screen_point)
     projected_shell_point = arc._plane_to_local(shell_point)
     projected_sprev_creen_point = arc._plane_to_local(prev_screen_point)
-    projected_end_plane_vector = arc._plane_to_local(end_arc_plane.view_normal)
+    projected_end_plane_vector = arc._plane_to_local(arc_plane.world_to_local(end_arc_plane.view_normal))
     
+    #TODO: if this works, dramatically simplify it. I think it's doing a very silly set of transformations
     #define the derivative
-    angle_vec = get_angle_vec_from_point(shell_point)
-    desired_light_direction_off_screen_towards_eye = normalize(arc_plane.project(-1.0 * angle_vector_to_vector(angle_vec, PRINCIPAL_RAY)))
+    angle_vec = get_angle_vec_from_point(arc_plane.local_to_world(shell_point))
+    desired_light_direction_off_screen_towards_eye = normalize(arc_plane.world_to_local(-1.0 * angle_vector_to_vector(angle_vec, PRINCIPAL_RAY)))
     def f(point, t):
         point_to_screen_vec = normalize(projected_screen_point - point)
         surface_normal = normalize(point_to_screen_vec + desired_light_direction_off_screen_towards_eye)
-        return Point2D(-surface_normal[1], surface_normal[0])
+        derivative = Point2D(-surface_normal[1], surface_normal[0])
+        return derivative
     
     #use the vector field to define the exact shape of the arc
-    max_t = 1.1 * light_radius
+    max_t = 1.1 * optics.globals.LIGHT_RADIUS
     t_values = numpy.arange(0.0, max_t, step_size)
     points = scipy.integrate.odeint(f, projected_shell_point, t_values)
     
@@ -63,16 +83,24 @@ def grow_arc(shell_point, screen_point, screen_normal, prev_screen_point, arc_pl
     #TODO: possibly put less weight on points that are farther away?
     #TODO: also, we don't really care that much about points that have gone farther than this poly really will..  should probably trim those
     #which should be relatively easy, because it's going to be relatively flat and we know how far approximately we'll go
-    weights = blah
     coefficients = numpy.polyfit(points[:, 0], points[:, 1], optics.globals.POLY_ORDER)
     arc._poly = np.polynomial.polynomial.Polynomial(coefficients)
+    arc._derivative = arc._poly.deriv(1)
     
     #intersect the poly and the projected_end_plane_vector to find the bounds for the arc
     #find the first intersection that is positive and closest to 0
-    roots = np.polynomial.polynomial.polyroots(poly_coeff - [99, -1, 0])
-    arc.end_point = arc.intersection(projected_end_plane_ray)
+    m, b = _convert_to_stupid_line_format(projected_end_plane_ray.start, projected_end_plane_ray.end)
+    roots = numpy.polynomial.polynomial.polyroots(coefficients - [b, m, 0])
+    positive_roots = [r for r in roots if r > 0]
+    arc.end_point = arc._poly(min(positive_roots))
     
     return arc
+
+def _convert_to_stupid_line_format(start, end):
+    n = end - start
+    m = n[1] / n[0]
+    b = m * projected_end_plane_ray.end[0] - projected_end_plane_ray.end[1]
+    return m, b
 
 #TODO: doc which parameters are in which coordinate systems.
 class Arc(object):
@@ -87,6 +115,7 @@ class Arc(object):
     def __init__(self, arc_plane, shell_point, screen_point, screen_normal, direction):
         self.arc_plane = arc_plane
         self.shell_point = shell_point
+        self.start_point = shell_point #just an alias
         self.screen_point = screen_point
         #note: only used in the case where FORCE_FLAT_SCREEN is True. Otherwise the screen normal is not really defined
         self.screen_normal = screen_normal
@@ -97,18 +126,19 @@ class Arc(object):
         
         shell_to_screen_normal = normalize(screen_point - shell_point)
         angle = normalized_vector_angle(shell_to_screen_normal, Point2D(0.0, 1.0))
-        self._local_to_plane_rotation = numpy.array([math.cos(angle), -math.sin(angle)], [math.sin(angle), math.cos(angle)])
+        self._local_to_plane_rotation = numpy.array([[math.cos(angle), -math.sin(angle)], [math.sin(angle), math.cos(angle)]])
         self._plane_to_local_rotation = numpy.linalg.inv(self._local_to_plane_rotation)
         
         #these need to be set later, after figuring out the polynomial
         self._poly = None
+        self._derivative = None
         self.end_point = None
     
     def _plane_to_local(self, point):
         """
         Converts Point2D in plane space to Point2D in arc space
         """
-        transformed_point = self._plane_to_local_rotation.dot(reflected_point + self._plane_to_local_translation)
+        transformed_point = self._plane_to_local_rotation.dot(point + self._plane_to_local_translation)
         return Point2D(self.direction * transformed_point[0], transformed_point[1])
         
     def _local_to_plane(self, point):
@@ -122,9 +152,9 @@ class Arc(object):
         """
         Just checks for the derivative at x
         """
-        return blah(point[0])
+        return rotate_90(normalize(Point2D(1.0, self._derivative(point[0]))))
     
-    def fast_arc_plane_intersection(self, plane_ray):
+    def fast_arc_plane_intersection(self, ray):
         """
         Note: collides with this as a line, not a ray (eg, the directionality is ignored)
         Also assumes that there is just one intersection in the start -> end range
@@ -132,10 +162,10 @@ class Arc(object):
         Also, this obviously works with rays that are 2D only, eg, must be in our arc plane
         """
         #convert ray to the form mx + b
-        m = blah
-        b = blah
-        roots = numpy.polynomial.polynomial.polyroots(self._poly.blah - [b, m, 0])
-        #find the intersection that is between start and end, and closest to the start of the line
-        return blah
-    
+        m, b = _convert_to_stupid_line_format(ray.start, ray.end)
+        roots = numpy.polynomial.polynomial.polyroots(self._poly.coeffs - [b, m, 0])
+        for root in roots:
+            if root > 0 and root < self.end_point[0]:
+                return Point2D(root, self._poly(root))
+        return None    
     
