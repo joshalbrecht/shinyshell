@@ -72,7 +72,7 @@ def grow_arc(shell_point, screen_point, screen_normal, prev_screen_point, arc_pl
     def f(point, t):
         point_to_screen_vec = normalize(projected_screen_point - point)
         surface_normal = normalize(point_to_screen_vec + desired_light_direction_off_screen_towards_eye)
-        derivative = direction * Point2D(surface_normal[1], -surface_normal[0])
+        derivative = Point2D(surface_normal[1], -surface_normal[0])
         return derivative
     
     #TODO: this is a pretty arbitrary, pointlessly high max_t
@@ -104,12 +104,12 @@ def grow_arc(shell_point, screen_point, screen_normal, prev_screen_point, arc_pl
     roots = numpy.real(numpy.polynomial.polynomial.polyroots(coefficients - line_poly))
     positive_roots = [r for r in roots if r > 0]
     
-    plt.plot(points[:,0], points[:, 1],"r")
-    plt.plot(points[:,0], arc._poly(points[:, 0]),"b")
-    plt.plot(points[:,0], numpy.polynomial.polynomial.Polynomial(line_poly)(points[:,0]), "g-")
-    plt.plot(projected_origin[0], projected_origin[1],"ro")
-    plt.plot(projected_screen_point[0], projected_screen_point[1],"bo")
-    plt.show()
+    #plt.plot(points[:,0], points[:, 1],"r")
+    #plt.plot(points[:,0], arc._poly(points[:, 0]),"b")
+    #plt.plot(points[:,0], numpy.polynomial.polynomial.Polynomial(line_poly)(points[:,0]), "g-")
+    #plt.plot(projected_origin[0], projected_origin[1],"ro")
+    #plt.plot(projected_screen_point[0], projected_screen_point[1],"bo")
+    #plt.show()
     
     if len(positive_roots) <= 0:
         x_values = numpy.array([0.0, 80.0])
@@ -180,7 +180,7 @@ class Arc(object):
         Just checks for the derivative at x
         """
         transformed_point = self._plane_to_local(point)
-        return rotate_90(normalize(Point2D(1.0, self._derivative(transformed_point[0]))))
+        return rotate_90(normalize(Point2D(self.direction * 1.0, self._derivative(transformed_point[0]))))
     
     def fast_arc_plane_intersection(self, ray):
         """
@@ -198,6 +198,10 @@ class Arc(object):
         #x = numpy.linspace(0.0, self.max_x, 100)
         #plt.plot(x, self._poly(x),"b")
         #plt.plot(x, numpy.polynomial.polynomial.Polynomial(self._poly.coef - line_poly)(x),"g")
+        #projected_screen_point = self._plane_to_local(self.screen_point)
+        #projected_origin = self._plane_to_local(self.arc_plane.world_to_local(Point3D(0.0, 0.0, 0.0)))
+        #plt.plot(projected_origin[0], projected_origin[1],"ro")
+        #plt.plot(projected_screen_point[0], projected_screen_point[1],"bo")
         #print roots
         #plt.show()
         
