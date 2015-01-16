@@ -88,15 +88,28 @@ def grow_arc(shell_point, screen_point, screen_normal, prev_screen_point, arc_pl
     #TODO: possibly put less weight on points that are farther away?
     #TODO: also, we don't really care that much about points that have gone farther than this poly really will..  should probably trim those
     #which should be relatively easy, because it's going to be relatively flat and we know how far approximately we'll go
-    coefficients = numpy.polyfit(points[:, 0], points[:, 1], optics.globals.POLY_ORDER)
+    coefficients = numpy.polynomial.polynomial.polyfit(points[:, 0], points[:, 1], optics.globals.POLY_ORDER)
     arc._poly = numpy.polynomial.polynomial.Polynomial(coefficients)
     arc._derivative = arc._poly.deriv(1)
     
+    #plt.plot(points[:,0], points[:, 1],"r")
+    #plt.plot(points[:,0], arc._poly(points[:, 0]),"b")
+    #plt.plot(projected_origin[0], projected_origin[1],"ro")
+    #plt.plot(projected_screen_point[0], projected_screen_point[1],"bo")
+    #plt.show()
+    
     #intersect the poly and the projected_end_plane_vector to find the bounds for the arc
     #find the first intersection that is positive and closest to 0
-    m, b = _convert_to_stupid_line_format(projected_end_plane_line_start, projected_end_plane_line_end)
-    roots = numpy.polynomial.polynomial.polyroots(coefficients - [b, m, 0])
-    positive_roots = [r for r in roots if r > 0 and numpy.isreal(r)]
+    line_poly = _convert_line_to_poly_coefs(projected_end_plane_line_start, projected_end_plane_line_end)
+    roots = numpy.real(numpy.polynomial.polynomial.polyroots(coefficients - line_poly))
+    positive_roots = [r for r in roots if r > 0]
+    
+    #plt.plot(points[:,0], points[:, 1],"r")
+    #plt.plot(points[:,0], arc._poly(points[:, 0]),"b")
+    #plt.plot(points[:,0], numpy.polynomial.polynomial.Polynomial(line_poly)(points[:,0]), "g-")
+    #plt.plot(projected_origin[0], projected_origin[1],"ro")
+    #plt.plot(projected_screen_point[0], projected_screen_point[1],"bo")
+    #plt.show()
     
     if len(positive_roots) <= 0:
         x_values = numpy.array([0.0, 80.0])
@@ -110,11 +123,11 @@ def grow_arc(shell_point, screen_point, screen_normal, prev_screen_point, arc_pl
     
     return arc
 
-def _convert_to_stupid_line_format(start, end):
+def _convert_line_to_poly_coefs(start, end):
     n = end - start
     m = n[1] / n[0]
     b = end[1] - m * end[0]
-    return m, b
+    return [b, m] + (optics.globals.POLY_ORDER - 1) * [0.0]
 
 #TODO: doc which parameters are in which coordinate systems.
 class Arc(object):
@@ -176,12 +189,29 @@ class Arc(object):
         Also, this obviously works with rays that are 2D only, eg, must be in our arc plane
         """
         #convert ray to the form mx + b
-        m, b = _convert_to_stupid_line_format(self._plane_to_local(ray.start), self._plane_to_local(ray.end))
-        roots = numpy.polynomial.polynomial.polyroots(self._poly.coef - [b, m, 0])
-        for root in roots:
-            if numpy.isreal(root) and root > 0 and root < self.max_x:
+        line_poly = _convert_line_to_poly_coefs(self._plane_to_local(ray.start), self._plane_to_local(ray.end))
+        roots = numpy.polynomial.polynomial.polyroots(self._poly.coef - line_poly)
+        
+        #ray_list = numpy.array([self._plane_to_local(ray.start), self._plane_to_local(ray.end)])
+        #plt.plot(ray_list[:, 0], ray_list[:, 1], "r-")
+        #x = numpy.linspace(0.0, self.max_x, 100)
+        #plt.plot(x, self._poly(x),"b")
+        #plt.plot(x, numpy.polynomial.polynomial.Polynomial(self._poly.coef - line_poly)(x),"g")
+        #print roots
+        #plt.show()
+        
+        for root in numpy.real(roots):
+            if root > 0 and root < self.max_x:
                 return self._local_to_plane(Point2D(root, self._poly(root)))
         return None
+    
+    def draw_rays(self, rays):
+        for ray in rays:
+            ray_list = numpy.array([self._plane_to_local(ray.start), self._plane_to_local(ray.end)])
+            plt.plot(ray_list[:, 0], ray_list[:, 1], "r-")
+        x = numpy.linspace(0.0, self.max_x, 100)
+        plt.plot(x, self._poly(x),"b")
+        plt.show()
     
     @property
     def end_point(self):

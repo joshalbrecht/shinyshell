@@ -39,7 +39,7 @@ stop_flag = threading.Event()
 
 def clear_temporary_data():
     """
-    Use this space to delete everything in a temporary folder, tec
+    Use this space to delete everything in a temporary folder, etc
     """
     pass
 

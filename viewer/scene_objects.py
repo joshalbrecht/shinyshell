@@ -11,6 +11,7 @@ import OpenGL.GL
 #this is the one thing that is allowed to import *
 from optics.base import *
 import optics.calculations
+import optics.new_calculations
 
 class SceneObject(object):
     """
@@ -72,6 +73,8 @@ class RenderableArc(SceneObject):
         SceneObject.__init__(self, pos=arc.arc_plane.local_to_world(arc.start_point), **kwargs)
         self.arc = arc
         self.points = self.points()
+        self.rays = []
+        self._calculate_rays()
         
     def points(self):
         return [self.arc.arc_plane.local_to_world(self.arc._local_to_plane(Point2D(x, self.arc._poly(x)))) for x in numpy.linspace(0.0, self.arc.max_x, 100)]
@@ -83,6 +86,23 @@ class RenderableArc(SceneObject):
         for point in self.points:
             OpenGL.GL.glVertex3f(*point)
         OpenGL.GL.glEnd()
+        
+        OpenGL.GL.glBegin(OpenGL.GL.GL_LINES)
+        for ray in self.rays:
+            OpenGL.GL.glVertex3f(*ray.start)
+            OpenGL.GL.glVertex3f(*ray.end)
+        OpenGL.GL.glEnd()
+        
+    def _calculate_rays(self):
+        transform = self.arc.arc_plane.local_to_world
+        self.rays = []
+        rays = optics.new_calculations._generate_rays(self.arc)
+        intersections, screen_points = optics.new_calculations.cast_rays_on_to_screen(rays, [self.arc])
+        for i in range(0, len(rays)):
+            intersection = intersections[i]
+            if intersection != None:
+                self.rays.append(LightRay(transform(rays[i].start), transform(intersection)))
+                self.rays.append(LightRay(transform(intersection), transform(screen_points[i])))
     
 class MovablePoint(SceneObject):
     def render(self):

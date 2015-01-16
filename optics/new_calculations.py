@@ -111,6 +111,16 @@ def grow_axis(initial_shell_point, initial_screen_point, screen_normal, arc_plan
         prev_screen_point = arc.screen_point
         focal_screen_point = get_focal_point(arc)
     return arcs
+
+def _generate_rays(arc):
+    main_ray_vector = arc.shell_point
+    directions = get_spaced_points(arc.start_point, arc.end_point)
+    rays = []
+    for direction in directions:
+        start_point = direction - main_ray_vector
+        end_point = start_point + 2.0 * main_ray_vector
+        rays.append(Ray(start_point, end_point))
+    return rays
     
 def get_focal_point(arc):
     """
@@ -118,14 +128,8 @@ def get_focal_point(arc):
     """
     if FORCE_FLAT_SCREEN:
         #just finds the average location of all of the places where the rays hit
-        main_ray_vector = arc.shell_point
-        directions = get_spaced_points(arc.start_point, arc.end_point)
-        rays = []
-        for direction in directions:
-            start_point = direction - main_ray_vector
-            end_point = start_point + 2.0 * main_ray_vector
-            rays.append(Ray(start_point, end_point))
-        screen_points = cast_rays_on_to_screen(rays, [arc])
+        rays = _generate_rays(arc)
+        intersections, screen_points = cast_rays_on_to_screen(rays, [arc])
         filtered_points = numpy.array([p for p in screen_points if p != None])
         return sum(filtered_points) / len(filtered_points)
     else:
@@ -140,9 +144,12 @@ def cast_rays_on_to_screen(rays, arcs, screen=None):
         arc = arcs[0]
         screen_line_start = arc.screen_point
         screen_line_end = rotate_90(arc.screen_normal) + arc.screen_point
+        intersections = []
         screen_points = []
+        #arc.draw_rays(rays)
         for ray in rays:
             intersection = arc.fast_arc_plane_intersection(ray)
+            intersections.append(intersection)
             if intersection == None:
                 screen_points.append(None)
             else:
@@ -153,7 +160,7 @@ def cast_rays_on_to_screen(rays, arcs, screen=None):
                 ray_to_screen_end = intersection + reflection_direction
                 screen_intersection = intersect_lines((intersection, ray_to_screen_end), (screen_line_start, screen_line_end))
                 screen_points.append(screen_intersection)
-        return screen_points
+        return intersections, screen_points
     else:
         #calculate based on the bundle of rays.
         raise NotImplementedError()

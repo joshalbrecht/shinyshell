@@ -22,7 +22,7 @@ QUALITY_MODE = HIGH_QUALITY_MODE
 #if QUALITY_MODE <= LOW_QUALITY_MODE:
 #    POLY_ORDER = 2
 
-POLY_ORDER = 2
+POLY_ORDER = 3
 
 #based on the fact that your pupil is approximately this big
 #basically defines how big the region is that we are trying to put in focus with a given patch
