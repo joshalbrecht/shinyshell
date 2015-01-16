@@ -65,9 +65,9 @@ class Window(pyglet.window.Window):
         
     def on_done_moving_things(self):
         def on_done(arcs):
-            self.arcs = [optics.scene_objects.RenderableArc(arc) for arc in arcs]
+            self.arcs = [viewer.scene_objects.RenderableArc(arc) for arc in arcs]
         def on_new_arc(arc):
-            self.arcs.append(optics.scene_objects.RenderableArc(arc))
+            self.arcs.append(viewer.scene_objects.RenderableArc(arc))
         self.arcs = []
         self._stop_generating_surface()
         screen_normal = normalize(self._screen_normal_point.pos - self._screen_point.pos)

@@ -5,6 +5,7 @@ Objects for the user to manipulate within the window
 
 import sys
 
+import numpy
 import OpenGL.GL
 
 #this is the one thing that is allowed to import *
@@ -68,9 +69,12 @@ class SceneObject(object):
 class RenderableArc(SceneObject):
     
     def __init__(self, arc, **kwargs):
-        SceneObject.__init__(self, **kwargs)
+        SceneObject.__init__(self, pos=arc.arc_plane.local_to_world(arc.start_point), **kwargs)
         self.arc = arc
-        self.points = arc.points()
+        self.points = self.points()
+        
+    def points(self):
+        return [self.arc.arc_plane.local_to_world(self.arc._local_to_plane(Point2D(x, self.arc._poly(x)))) for x in numpy.linspace(0.0, self.arc.max_x, 100)]
         
     def render(self):
         SceneObject.render(self)

@@ -14,6 +14,8 @@ import numpy
 import scipy.integrate
 import scipy.optimize
 
+import matplotlib.pyplot as plt
+
 #this is the one thing that is allowed to import *
 from optics.base import *
 import optics.globals
@@ -60,21 +62,24 @@ def grow_arc(shell_point, screen_point, screen_normal, prev_screen_point, arc_pl
     #transform everything into the arc's coordinates
     projected_screen_point = arc._plane_to_local(screen_point)
     projected_shell_point = arc._plane_to_local(shell_point)
-    projected_sprev_creen_point = arc._plane_to_local(prev_screen_point)
-    projected_end_plane_vector = arc._plane_to_local(arc_plane.world_to_local(end_arc_plane.view_normal))
+    projected_prev_creen_point = arc._plane_to_local(prev_screen_point)
+    projected_origin = arc._plane_to_local(arc_plane.world_to_local(Point3D(0.0, 0.0, 0.0)))
+    projected_end_plane_line_start = projected_origin
+    projected_end_plane_line_end = arc._plane_to_local(arc_plane.world_to_local(end_arc_plane.view_normal))
     
-    #TODO: if this works, dramatically simplify it. I think it's doing a very silly set of transformations
     #define the derivative
-    angle_vec = get_angle_vec_from_point(arc_plane.local_to_world(shell_point))
-    desired_light_direction_off_screen_towards_eye = normalize(arc_plane.world_to_local(-1.0 * angle_vector_to_vector(angle_vec, PRINCIPAL_RAY)))
+    desired_light_direction_off_screen_towards_eye = normalize(projected_origin - projected_shell_point)
     def f(point, t):
         point_to_screen_vec = normalize(projected_screen_point - point)
         surface_normal = normalize(point_to_screen_vec + desired_light_direction_off_screen_towards_eye)
-        derivative = Point2D(-surface_normal[1], surface_normal[0])
+        derivative = Point2D(surface_normal[1], -surface_normal[0])
         return derivative
     
+    #TODO: this is a pretty arbitrary, pointlessly high max_t
+    #we can calulate the max_t much more precisely because arcs are mostly linear...
+    
     #use the vector field to define the exact shape of the arc
-    max_t = 1.1 * optics.globals.LIGHT_RADIUS
+    max_t = 2.0 * optics.globals.LIGHT_RADIUS
     t_values = numpy.arange(0.0, max_t, step_size)
     points = scipy.integrate.odeint(f, projected_shell_point, t_values)
     
@@ -84,22 +89,31 @@ def grow_arc(shell_point, screen_point, screen_normal, prev_screen_point, arc_pl
     #TODO: also, we don't really care that much about points that have gone farther than this poly really will..  should probably trim those
     #which should be relatively easy, because it's going to be relatively flat and we know how far approximately we'll go
     coefficients = numpy.polyfit(points[:, 0], points[:, 1], optics.globals.POLY_ORDER)
-    arc._poly = np.polynomial.polynomial.Polynomial(coefficients)
+    arc._poly = numpy.polynomial.polynomial.Polynomial(coefficients)
     arc._derivative = arc._poly.deriv(1)
     
     #intersect the poly and the projected_end_plane_vector to find the bounds for the arc
     #find the first intersection that is positive and closest to 0
-    m, b = _convert_to_stupid_line_format(projected_end_plane_ray.start, projected_end_plane_ray.end)
+    m, b = _convert_to_stupid_line_format(projected_end_plane_line_start, projected_end_plane_line_end)
     roots = numpy.polynomial.polynomial.polyroots(coefficients - [b, m, 0])
-    positive_roots = [r for r in roots if r > 0]
-    arc.end_point = arc._poly(min(positive_roots))
+    positive_roots = [r for r in roots if r > 0 and numpy.isreal(r)]
+    
+    if len(positive_roots) <= 0:
+        x_values = numpy.array([0.0, 80.0])
+        plt.plot(points[:,0], points[:, 1],"r")
+        plt.plot(x_values, b + m * x_values, 'b-')
+        plt.plot(projected_origin[0], projected_origin[1], "ro")
+        plt.plot(projected_screen_point[0], projected_screen_point[1], "bo")
+        plt.show()
+    
+    arc.max_x = min(positive_roots)
     
     return arc
 
 def _convert_to_stupid_line_format(start, end):
     n = end - start
     m = n[1] / n[0]
-    b = m * projected_end_plane_ray.end[0] - projected_end_plane_ray.end[1]
+    b = end[1] - m * end[0]
     return m, b
 
 #TODO: doc which parameters are in which coordinate systems.
@@ -132,7 +146,6 @@ class Arc(object):
         #these need to be set later, after figuring out the polynomial
         self._poly = None
         self._derivative = None
-        self.end_point = None
     
     def _plane_to_local(self, point):
         """
@@ -152,7 +165,8 @@ class Arc(object):
         """
         Just checks for the derivative at x
         """
-        return rotate_90(normalize(Point2D(1.0, self._derivative(point[0]))))
+        transformed_point = self._plane_to_local(point)
+        return rotate_90(normalize(Point2D(1.0, self._derivative(transformed_point[0]))))
     
     def fast_arc_plane_intersection(self, ray):
         """
@@ -162,10 +176,15 @@ class Arc(object):
         Also, this obviously works with rays that are 2D only, eg, must be in our arc plane
         """
         #convert ray to the form mx + b
-        m, b = _convert_to_stupid_line_format(ray.start, ray.end)
-        roots = numpy.polynomial.polynomial.polyroots(self._poly.coeffs - [b, m, 0])
+        m, b = _convert_to_stupid_line_format(self._plane_to_local(ray.start), self._plane_to_local(ray.end))
+        roots = numpy.polynomial.polynomial.polyroots(self._poly.coef - [b, m, 0])
         for root in roots:
-            if root > 0 and root < self.end_point[0]:
-                return Point2D(root, self._poly(root))
-        return None    
+            if numpy.isreal(root) and root > 0 and root < self.max_x:
+                return self._local_to_plane(Point2D(root, self._poly(root)))
+        return None
+    
+    @property
+    def end_point(self):
+        return self._local_to_plane(Point2D(self.max_x, self._poly(self.max_x)))
+    
     

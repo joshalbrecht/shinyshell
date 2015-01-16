@@ -239,7 +239,6 @@ def intersect_lines(line1, line2):
 def get_spaced_points(start, end, num=10):
     vector = end - start
     return [start + scale * vector for scale in numpy.linspace(0.0, 1.0, num)]
-    
 
 def get_angle_vec_from_point(point):
     return AngleVector(

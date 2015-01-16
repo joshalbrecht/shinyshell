@@ -46,7 +46,7 @@ def phi_to_pixel_size(phi, theta):
     pixel_size_delta = max_pixel_size - min_pixel_size
     return max_pixel_size - pixel_size_delta * (phi / max_phi)
 
-def create_rib_arcs(initial_shell_point, initial_screen_point, screen_normal, principal_ray, process_pool, stop_flag, on_new_patch):
+def create_rib_arcs(initial_shell_point, initial_screen_point, screen_normal, principal_ray, process_pool, stop_flag, on_new_arc):
     """
     Creates a set of ribs and returns all of those arcs.
     Really just here to see basic shape and performance.
@@ -63,18 +63,18 @@ def create_rib_arcs(initial_shell_point, initial_screen_point, screen_normal, pr
         primary_arc_plane = optics.arcplane.ArcPlane(mu=0.0)
     else:
         primary_arc_plane = optics.arcplane.ArcPlane(rho=0.0)
-    spines = [grow_axis(initial_shell_point, initial_screen_point, screen_normal, primary_arc_plane, direction, angle_step) for direction in (FORWARD, BACKWARD)]
+    spines = [grow_axis(initial_shell_point, initial_screen_point, screen_normal, primary_arc_plane, direction, angle_step, on_new_arc) for direction in (FORWARD, BACKWARD)]
     
     #starting from each of the end points, create some more arcs
     all_arcs = list()
     points = [(arc.start_point, arc.screen_point) for arc in all_arcs][1:] #trims one from the start so we don't duplicate the origin
     for shell_point, screen_point in points:
-        all_arcs += grow_axis(shell_point, screen_point, screen_normal, arc_plane, FORWARD, angle_step)
-        all_arcs += grow_axis(shell_point, screen_point, screen_normal, arc_plane, BACKWARD, angle_step)
+        all_arcs += grow_axis(shell_point, screen_point, screen_normal, arc_plane, FORWARD, angle_step, on_new_arc)
+        all_arcs += grow_axis(shell_point, screen_point, screen_normal, arc_plane, BACKWARD, angle_step, on_new_arc)
     
     return all_arcs
 
-def grow_axis(initial_shell_point, initial_screen_point, screen_normal, arc_plane, direction, angle_step):
+def grow_axis(initial_shell_point, initial_screen_point, screen_normal, arc_plane, direction, angle_step, on_new_arc):
     """
     Grows a set of arcs along the arc plane.
     Each arc is optimized to focus light to the starting point.
@@ -94,7 +94,7 @@ def grow_axis(initial_shell_point, initial_screen_point, screen_normal, arc_plan
     """
     arcs = []
     angle = 0.0
-    shell_point = arc_plane.world_to_local(initial_screen_point)
+    shell_point = arc_plane.world_to_local(initial_shell_point)
     prev_screen_point = arc_plane.world_to_local(initial_screen_point)
     focal_screen_point = arc_plane.world_to_local(initial_screen_point)
     transformed_screen_normal = normalize(arc_plane.world_to_local(screen_normal))
@@ -106,6 +106,7 @@ def grow_axis(initial_shell_point, initial_screen_point, screen_normal, arc_plan
             end_arc_plane = optics.arcplane.ArcPlane(mu=angle)
         arc = optics.arc.grow_arc(shell_point, focal_screen_point, transformed_screen_normal, prev_screen_point, arc_plane, end_arc_plane)
         arcs.append(arc)
+        on_new_arc(arc)
         shell_point = arc.end_point
         prev_screen_point = arc.screen_point
         focal_screen_point = get_focal_point(arc)
@@ -125,7 +126,7 @@ def get_focal_point(arc):
             end_point = start_point + 2.0 * main_ray_vector
             rays.append(Ray(start_point, end_point))
         screen_points = cast_rays_on_to_screen(rays, [arc])
-        filtered_points = [p for p in screen_points if p != None]
+        filtered_points = numpy.array([p for p in screen_points if p != None])
         return sum(filtered_points) / len(filtered_points)
     else:
         #calculate based on the bundle of rays.
@@ -139,6 +140,7 @@ def cast_rays_on_to_screen(rays, arcs, screen=None):
         arc = arcs[0]
         screen_line_start = arc.screen_point
         screen_line_end = rotate_90(arc.screen_normal) + arc.screen_point
+        screen_points = []
         for ray in rays:
             intersection = arc.fast_arc_plane_intersection(ray)
             if intersection == None:
@@ -148,8 +150,8 @@ def cast_rays_on_to_screen(rays, arcs, screen=None):
                 reverse_ray_direction = normalize(ray.start - ray.end)
                 midpoint = closestPointOnLine(reverse_ray_direction, Point2D(0.0, 0.0), normal)
                 reflection_direction = (2.0 * (midpoint - reverse_ray_direction)) + reverse_ray_direction
-                ray_to_screen_end = intersection + reflection_length * reflection_direction
-                screen_intersection = intersect_lines(intersection, ray_to_screen_end, screen_line_start, screen_line_end)
+                ray_to_screen_end = intersection + reflection_direction
+                screen_intersection = intersect_lines((intersection, ray_to_screen_end), (screen_line_start, screen_line_end))
                 screen_points.append(screen_intersection)
         return screen_points
     else:
