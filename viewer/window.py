@@ -50,9 +50,9 @@ class Window(pyglet.window.Window):
         
         self._principal_ray = Point3D(0.0, 0.0, -1.0)
         
-        shell_point = Point3D(0.0, 0.0000000000, -82.7510541100)
-        screen_point = Point3D(0.0, 74.6275528483, -63.2394043192)
-        screen_normal_point = screen_point + 10.0 * Point3D(0., -0.9850546720, 0.1722419612)
+        shell_point = Point3D(0.0, 0.0000000000, -83.5512139299)
+        screen_point = Point3D(0.0, 64.3528835086, -50.0291148336)
+        screen_normal_point = screen_point + 10.0 * Point3D(0., -0.7651070168, -0.6439031393)
         
         self._shell_point = viewer.scene_objects.ShellStartingPoint(pos=shell_point, color=(1.0, 0.0, 0.0), change_handler=self.on_initial_parameter_change)
         self._screen_point = viewer.scene_objects.ScreenStartingPoint(pos=screen_point, color=(1.0, 0.0, 0.0), change_handler=self.on_initial_parameter_change)
