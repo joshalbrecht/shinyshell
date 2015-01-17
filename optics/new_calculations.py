@@ -113,6 +113,7 @@ def draw_things(arcs):
             for arc in arcs:
                 intersection, reflection_direction = arc.fast_arc_plane_reflection(ray)
                 if intersection != None:
+                    #arc._debug_plot_intersection(ray)
                     transform = arc.arc_plane.local_to_world
                     reflection_length = numpy.linalg.norm(arc.shell_point - arc.screen_point) * 1.05
                     rays.append(viewer.scene_objects.LightRay(transform(ray.start), transform(intersection)))

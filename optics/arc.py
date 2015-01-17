@@ -186,6 +186,23 @@ class Arc(object):
         reflected_point = Point2D(self.direction * local_normal[0], local_normal[1])
         return self._local_to_plane_rotation.dot(reflected_point)
     
+    def _debug_plot_intersection(self, ray):
+        #convert ray to the form mx + b
+        line_poly = _convert_line_to_poly_coefs(self._plane_to_local(ray.start), self._plane_to_local(ray.end))
+        roots = numpy.polynomial.polynomial.polyroots(self._poly.coef - line_poly)
+        
+        ray_list = numpy.array([self._plane_to_local(ray.start), self._plane_to_local(ray.end)])
+        plt.plot(ray_list[:, 0], ray_list[:, 1], "r-")
+        x = numpy.linspace(0.0, self.max_x, 100)
+        plt.plot(x, self._poly(x),"b")
+        plt.plot(x, numpy.polynomial.polynomial.Polynomial(self._poly.coef - line_poly)(x),"g")
+        projected_screen_point = self._plane_to_local(self.screen_point)
+        projected_origin = self._plane_to_local(self.arc_plane.world_to_local(Point3D(0.0, 0.0, 0.0)))
+        plt.plot(projected_origin[0], projected_origin[1],"ro")
+        plt.plot(projected_screen_point[0], projected_screen_point[1],"bo")
+        print roots
+        plt.show()
+        
     def fast_arc_plane_intersection(self, ray):
         """
         Note: collides with this as a line, not a ray (eg, the directionality is ignored)
@@ -197,21 +214,11 @@ class Arc(object):
         line_poly = _convert_line_to_poly_coefs(self._plane_to_local(ray.start), self._plane_to_local(ray.end))
         roots = numpy.polynomial.polynomial.polyroots(self._poly.coef - line_poly)
         
-        #ray_list = numpy.array([self._plane_to_local(ray.start), self._plane_to_local(ray.end)])
-        #plt.plot(ray_list[:, 0], ray_list[:, 1], "r-")
-        #x = numpy.linspace(0.0, self.max_x, 100)
-        #plt.plot(x, self._poly(x),"b")
-        #plt.plot(x, numpy.polynomial.polynomial.Polynomial(self._poly.coef - line_poly)(x),"g")
-        #projected_screen_point = self._plane_to_local(self.screen_point)
-        #projected_origin = self._plane_to_local(self.arc_plane.world_to_local(Point3D(0.0, 0.0, 0.0)))
-        #plt.plot(projected_origin[0], projected_origin[1],"ro")
-        #plt.plot(projected_screen_point[0], projected_screen_point[1],"bo")
-        #print roots
-        #plt.show()
-        
-        for root in numpy.real(roots):
-            if root > 0 and root < self.max_x:
-                return self._local_to_plane(Point2D(root, self._poly(root)))
+        for root in numpy.real_if_close(roots, tol=1000000):
+            if numpy.isreal(root):
+                root = numpy.real(root)
+                if root > 0 and root < self.max_x:
+                    return self._local_to_plane(Point2D(root, self._poly(root)))
         return None
     
     def fast_arc_plane_reflection(self, ray):
