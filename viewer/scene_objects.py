@@ -88,7 +88,7 @@ class RenderableArc(SceneObject):
         OpenGL.GL.glEnd()
         
         OpenGL.GL.glBegin(OpenGL.GL.GL_LINES)
-        for ray in self.rays:
+        for ray in self.rays + self.arc.render_rays:
             OpenGL.GL.glVertex3f(*ray.start)
             OpenGL.GL.glVertex3f(*ray.end)
         OpenGL.GL.glEnd()

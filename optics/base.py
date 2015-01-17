@@ -236,7 +236,7 @@ def intersect_lines(line1, line2):
     y = calculate_determinant(d, ydiff) / div
     return x, y
 
-def get_spaced_points(start, end, num=10):
+def get_spaced_points(start, end, num=11):
     vector = end - start
     return [start + scale * vector for scale in numpy.linspace(0.0, 1.0, num)]
 

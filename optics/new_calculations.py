@@ -29,7 +29,7 @@ import optics.taylor_poly
 import optics.arc
 import optics.arcplane
 
-FORCE_FLAT_SCREEN = True
+FORCE_FLAT_SCREEN = False
 FOV = math.pi / 2.0
 
 ORIGIN = Point3D(0.0, 0.0, 0.0)
@@ -67,7 +67,8 @@ def create_rib_arcs(initial_shell_point, initial_screen_point, screen_normal, pr
     
     #starting from each of the end points, create some more arcs
     all_arcs = spines[0] + spines[1]
-    check_performance(all_arcs)
+    #check_performance(all_arcs)
+    draw_things(all_arcs)
     points = [(arc.start_point, arc.screen_point) for arc in all_arcs][1:] #trims one from the start so we don't duplicate the origin
     for shell_point, screen_point in points:
         all_arcs += grow_axis(shell_point, screen_point, screen_normal, arc_plane, FORWARD, angle_step, on_new_arc)
@@ -95,6 +96,29 @@ def check_performance(arcs):
         distances = [numpy.linalg.norm(p-focal_point) for p in filtered_points]
         spot_error = sum(distances) / len(filtered_points)
         print("%.2f   %.7f" % (angle, spot_error))
+        
+def draw_things(arcs):
+    import viewer.scene_objects
+    max_angle = FOV/2.0
+    num_rays = 11
+    ray_length = 1000.0
+    rays = []
+    for angle in numpy.linspace(-max_angle, max_angle, 29):
+    #for angle in numpy.linspace(0.0, max_angle, 29):
+        #make a bunch of rays
+        normal = Point2D(math.cos(angle), math.sin(angle))
+        for offset in numpy.linspace(-optics.globals.LIGHT_RADIUS, optics.globals.LIGHT_RADIUS, num_rays):
+            delta = Point2D(0.0, offset)
+            ray = Ray(delta, delta + normal * ray_length)
+            for arc in arcs:
+                intersection, reflection_direction = arc.fast_arc_plane_reflection(ray)
+                if intersection != None:
+                    transform = arc.arc_plane.local_to_world
+                    reflection_length = numpy.linalg.norm(arc.shell_point - arc.screen_point) * 1.05
+                    rays.append(viewer.scene_objects.LightRay(transform(ray.start), transform(intersection)))
+                    rays.append(viewer.scene_objects.LightRay(transform(intersection), transform(intersection + reflection_direction * reflection_length)))
+                    break
+    arcs[0].render_rays = rays
     
 def grow_axis(initial_shell_point, initial_screen_point, screen_normal, arc_plane, direction, angle_step, on_new_arc):
     """
@@ -155,7 +179,26 @@ def get_focal_point(arc):
         return sum(filtered_points) / len(filtered_points)
     else:
         #calculate based on the bundle of rays.
-        raise NotImplementedError()
+        rays = _generate_rays(arc, arc.end_point)
+        assert len(rays) % 2 == 1, "need a central ray"
+        central_ray_idx = len(rays) / 2
+        central_ray = rays[central_ray_idx]
+        other_rays = rays[:central_ray_idx] + rays[central_ray_idx+1:]
+        
+        central_intersection, central_reflection_direction = arc.fast_arc_plane_reflection(central_ray)
+        if central_intersection != None:
+            central_reflected_ray_end = central_intersection + central_reflection_direction
+            total = Point2D(0.0, 0.0)
+            num_intersections = 0
+            for ray in other_rays:
+                intersection, reflection_direction = arc.fast_arc_plane_reflection(ray)
+                if intersection != None:
+                    total += intersect_lines(
+                        [central_intersection, central_reflected_ray_end],
+                        [intersection, intersection + reflection_direction]
+                    )
+                    num_intersections += 1
+            return total / num_intersections  
 
 def cast_rays_on_to_screen(rays, arcs, screen=None):
     """
@@ -164,29 +207,27 @@ def cast_rays_on_to_screen(rays, arcs, screen=None):
     if FORCE_FLAT_SCREEN:
         screen_line_start = arcs[0].screen_point
         screen_line_end = rotate_90(arcs[0].screen_normal) + arcs[0].screen_point
-        intersections = []
-        screen_points = []
-        #arc.draw_rays(rays)
-        for ray in rays:
-            intersection = None
-            for arc in arcs:
-                intersection = arc.fast_arc_plane_intersection(ray)
-                if intersection != None:
-                    intersections.append(intersection)
-                    normal = arc.fast_normal(intersection)
-                    reverse_ray_direction = normalize(ray.start - ray.end)
-                    midpoint = closestPointOnLine(reverse_ray_direction, Point2D(0.0, 0.0), normal)
-                    reflection_direction = (2.0 * (midpoint - reverse_ray_direction)) + reverse_ray_direction
-                    ray_to_screen_end = intersection + reflection_direction
-                    screen_intersection = intersect_lines((intersection, ray_to_screen_end), (screen_line_start, screen_line_end))
-                    screen_points.append(screen_intersection)
-                    break
-                if intersection == None:
-                    screen_points.append(None)
-                    intersections.append(None)
-        return intersections, screen_points
     else:
-        #calculate based on the bundle of rays.
-        raise NotImplementedError()
+        #TODO: have to find some way to collide with this new screen...
+        #maybe fit a poly to the screen points and collide with that
+        #raise NotImplementedError()
+        return [None] * len(rays), [None] * len(rays)
+    intersections = []
+    screen_points = []
+    #arc.draw_rays(rays)
+    for ray in rays:
+        intersection = None
+        for arc in arcs:
+            intersection, reflection_direction = arc.fast_arc_plane_reflection(ray)
+            if intersection != None:
+                ray_to_screen_end = intersection + reflection_direction
+                screen_intersection = intersect_lines((intersection, ray_to_screen_end), (screen_line_start, screen_line_end))
+                screen_points.append(screen_intersection)
+                intersections.append(intersection)
+                break
+            if intersection == None:
+                screen_points.append(None)
+                intersections.append(None)
+    return intersections, screen_points
     
 

@@ -159,6 +159,9 @@ class Arc(object):
         #these need to be set later, after figuring out the polynomial
         self._poly = None
         self._derivative = None
+        
+        #hacks
+        self.render_rays = []
     
     def _plane_to_local(self, point):
         """
@@ -210,6 +213,16 @@ class Arc(object):
             if root > 0 and root < self.max_x:
                 return self._local_to_plane(Point2D(root, self._poly(root)))
         return None
+    
+    def fast_arc_plane_reflection(self, ray):
+        intersection = self.fast_arc_plane_intersection(ray)
+        if intersection != None:
+            normal = self.fast_normal(intersection)
+            reverse_ray_direction = normalize(ray.start - ray.end)
+            midpoint = closestPointOnLine(reverse_ray_direction, Point2D(0.0, 0.0), normal)
+            reflection_direction = (2.0 * (midpoint - reverse_ray_direction)) + reverse_ray_direction
+            return intersection, reflection_direction
+        return None, None
     
     def draw_rays(self, rays):
         for ray in rays:
