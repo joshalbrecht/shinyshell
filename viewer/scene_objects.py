@@ -85,6 +85,7 @@ class RenderableArc(SceneObject):
         OpenGL.GL.glBegin(OpenGL.GL.GL_POINTS)
         for point in self.points:
             OpenGL.GL.glVertex3f(*point)
+        OpenGL.GL.glVertex3f(*self.arc.arc_plane.local_to_world(self.arc.screen_point))
         OpenGL.GL.glEnd()
         
         OpenGL.GL.glBegin(OpenGL.GL.GL_LINES)

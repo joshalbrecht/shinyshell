@@ -30,7 +30,7 @@ import optics.arc
 import optics.arcplane
 
 FORCE_FLAT_SCREEN = False
-FOV = math.pi / 2.0
+FOV = 70.0 * math.pi / 180.0
 
 ORIGIN = Point3D(0.0, 0.0, 0.0)
 FORWARD = 1.0
@@ -68,9 +68,13 @@ def create_rib_arcs(initial_shell_point, initial_screen_point, screen_normal, pr
     #starting from each of the end points, create some more arcs
     all_arcs = spines[0] + spines[1]
     #check_performance(all_arcs)
-    draw_things(all_arcs)
-    points = [(arc.start_point, arc.screen_point) for arc in all_arcs][1:] #trims one from the start so we don't duplicate the origin
+    #draw_things(all_arcs)
+    points = [(arc.arc_plane.local_to_world(arc.shell_point), arc.arc_plane.local_to_world(arc.screen_point)) for arc in all_arcs][1:] #trims one from the start so we don't duplicate the origin
     for shell_point, screen_point in points:
+        if vertical_first:
+            arc_plane = optics.arcplane.ArcPlane(rho=math.atan(shell_point[1] / -shell_point[2]))
+        else:
+            arc_plane = optics.arcplane.ArcPlane(mu=math.atan(shell_point[0] / -shell_point[2]))
         all_arcs += grow_axis(shell_point, screen_point, screen_normal, arc_plane, FORWARD, angle_step, on_new_arc)
         all_arcs += grow_axis(shell_point, screen_point, screen_normal, arc_plane, BACKWARD, angle_step, on_new_arc)
     

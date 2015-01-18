@@ -53,6 +53,8 @@ def grow_arc(shell_point, screen_point, screen_normal, prev_screen_point, arc_pl
     :rtype: Arc
     """
     
+    print("%s %s" % (end_arc_plane.mu, arc_plane.rho))
+    
     #create the arc with basic parameters. not fully initialized yet, but can at least use the transformation
     direction = 1.0
     if end_arc_plane.angle < 0.0:
@@ -104,12 +106,15 @@ def grow_arc(shell_point, screen_point, screen_normal, prev_screen_point, arc_pl
     roots = numpy.real(numpy.polynomial.polynomial.polyroots(coefficients - line_poly))
     positive_roots = [r for r in roots if r > 0]
     
-    #plt.plot(points[:,0], points[:, 1],"r")
-    #plt.plot(points[:,0], arc._poly(points[:, 0]),"b")
-    #plt.plot(points[:,0], numpy.polynomial.polynomial.Polynomial(line_poly)(points[:,0]), "g-")
-    #plt.plot(projected_origin[0], projected_origin[1],"ro")
-    #plt.plot(projected_screen_point[0], projected_screen_point[1],"bo")
-    #plt.show()
+    #if end_arc_plane.mu > 0.5 and arc_plane.rho > 0.14:
+    #if arc_plane.rho > 0.14:
+    #if arc_plane.rho != None:
+        #plt.plot(points[:,0], points[:, 1],"r")
+        #plt.plot(points[:,0], arc._poly(points[:, 0]),"b")
+        #plt.plot(points[:,0], numpy.polynomial.polynomial.Polynomial(line_poly)(points[:,0]), "g-")
+        #plt.plot(projected_origin[0], projected_origin[1],"ro")
+        #plt.plot(projected_screen_point[0], projected_screen_point[1],"bo")
+        #plt.show()
     
     if len(positive_roots) <= 0:
         x_values = numpy.array([0.0, 80.0])
@@ -155,6 +160,11 @@ class Arc(object):
         angle = normalized_vector_angle(shell_to_screen_normal, Point2D(0.0, 1.0))
         self._local_to_plane_rotation = numpy.array([[math.cos(angle), -math.sin(angle)], [math.sin(angle), math.cos(angle)]])
         self._plane_to_local_rotation = numpy.linalg.inv(self._local_to_plane_rotation)
+        #TODO: this is dumb.
+        if math.fabs(self._plane_to_local_rotation.dot(shell_to_screen_normal)[1] - 1.0) > 0.00000001:
+            angle *= -1.0
+            self._local_to_plane_rotation = numpy.array([[math.cos(angle), -math.sin(angle)], [math.sin(angle), math.cos(angle)]])
+            self._plane_to_local_rotation = numpy.linalg.inv(self._local_to_plane_rotation)
         
         #these need to be set later, after figuring out the polynomial
         self._poly = None
