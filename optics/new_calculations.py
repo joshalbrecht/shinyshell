@@ -94,12 +94,15 @@ def check_performance(arcs):
             rays.append(Ray(delta, delta + normal * ray_length))
         #check them against all arcs (cause I'm lazy)
         intersections, screen_points = cast_rays_on_to_screen(rays, arcs)
-        filtered_points = numpy.array([p for p in screen_points if p != None])
-        #report size of focal point
-        focal_point = sum(filtered_points) / len(filtered_points)
-        distances = [numpy.linalg.norm(p-focal_point) for p in filtered_points]
-        spot_error = sum(distances) / len(filtered_points)
+        spot_error = _calculate_performance(screen_points)
         print("%.2f   %.7f" % (angle, spot_error))
+        
+def _calculate_performance(screen_points):
+    filtered_points = numpy.array([p for p in screen_points if p != None])
+    focal_point = sum(filtered_points) / len(filtered_points)
+    distances = [numpy.linalg.norm(p-focal_point) for p in filtered_points]
+    spot_error = sum(distances) / len(filtered_points)
+    return spot_error
         
 def draw_things(arcs):
     import viewer.scene_objects
@@ -203,20 +206,18 @@ def get_focal_point(arc):
                         [intersection, intersection + reflection_direction]
                     )
                     num_intersections += 1
-            return total / num_intersections  
+            screen_point = total / num_intersections
+            
+            #debug: checking performance
+            screen_line_start = screen_point
+            screen_line_end = rotate_90(normalize(central_intersection - screen_point)) + screen_point
+            intersections, screen_points = cast_rays_on_to_flat_screen(rays, [arc], screen_line_start, screen_line_end)
+            spot_error = _calculate_performance(screen_points)
+            print("%.7f" % (spot_error))
+            
+            return screen_point 
 
-def cast_rays_on_to_screen(rays, arcs, screen=None):
-    """
-    returns the locations on the screen
-    """
-    if FORCE_FLAT_SCREEN:
-        screen_line_start = arcs[0].screen_point
-        screen_line_end = rotate_90(arcs[0].screen_normal) + arcs[0].screen_point
-    else:
-        #TODO: have to find some way to collide with this new screen...
-        #maybe fit a poly to the screen points and collide with that
-        #raise NotImplementedError()
-        return [None] * len(rays), [None] * len(rays)
+def cast_rays_on_to_flat_screen(rays, arcs, screen_line_start, screen_line_end):
     intersections = []
     screen_points = []
     #arc.draw_rays(rays)
@@ -234,5 +235,23 @@ def cast_rays_on_to_screen(rays, arcs, screen=None):
                 screen_points.append(None)
                 intersections.append(None)
     return intersections, screen_points
+    
+
+def cast_rays_on_to_screen(rays, arcs, screen_line_start=None, screen_line_end=None):
+    """
+    returns the locations on the screen
+    """
+    if FORCE_FLAT_SCREEN:
+        if screen_line_end == None:
+            screen_line_start = arcs[0].screen_point
+        if screen_line_end == None:
+            screen_line_end = rotate_90(arcs[0].screen_normal) + arcs[0].screen_point
+        return cast_rays_on_to_flat_screen(rays, arcs, screen_line_start, screen_line_end)
+    else:
+        #TODO: have to find some way to collide with this new screen...
+        #maybe fit a poly to the screen points and collide with that
+        #raise NotImplementedError()
+        return [None] * len(rays), [None] * len(rays)
+    
     
 
