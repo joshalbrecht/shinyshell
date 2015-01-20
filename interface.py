@@ -57,7 +57,8 @@ def generate_surface(shell_point, screen_point, screen_normal, principal_ray, on
     def calculate():
         #scales = optics.calculations.create_surface_via_scales(shell_point, screen_point, screen_normal, principal_ray, process_pool, stop_flag, on_new_scale)
         #on_done(scales)
-        arcs = optics.new_calculations.create_rib_arcs(shell_point, screen_point, screen_normal, principal_ray, process_pool, stop_flag, on_new_scale)
+        #arcs = optics.new_calculations.create_rib_arcs(shell_point, screen_point, screen_normal, principal_ray, process_pool, stop_flag, on_new_scale)
+        arcs = optics.new_calculations.create_patch(shell_point, screen_point, screen_normal, principal_ray, process_pool, stop_flag, on_new_scale)
         on_done(arcs)
     
     master_thread = threading.Thread(target=calculate)

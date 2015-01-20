@@ -253,4 +253,17 @@ class Arc(object):
     def end_point(self):
         return self._local_to_plane(Point2D(self.max_x, self._poly(self.max_x)))
     
+    @property
+    def world_end_point(self):
+        return self.arc_plane.local_to_world(self.end_point)
+    
+    @property
+    def world_screen_point(self):
+        return self.arc_plane.local_to_world(self.screen_point)
+    
+    @property
+    def world_shell_point(self):
+        return self.arc_plane.local_to_world(self.shell_point)
+    
+    
     

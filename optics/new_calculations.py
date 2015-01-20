@@ -46,9 +46,46 @@ def phi_to_pixel_size(phi, theta):
     pixel_size_delta = max_pixel_size - min_pixel_size
     return max_pixel_size - pixel_size_delta * (phi / max_phi)
 
+def create_patch(initial_shell_point, initial_screen_point, screen_normal, principal_ray, process_pool, stop_flag, on_new_arc):
+    max_angle = math.fabs(math.atan(optics.globals.LIGHT_RADIUS / initial_shell_point[2]))
+    
+    #create up rib
+    primary_vertical_plane = optics.arcplane.ArcPlane(mu=0.0)
+    ending_horizontal_plane = optics.arcplane.ArcPlane(rho=max_angle)
+    left_side_arc = grow_arc(initial_shell_point, initial_screen_point, initial_screen_point, primary_vertical_plane, ending_horizontal_plane)
+    on_new_arc(left_side_arc)
+    
+    #create right rib
+    primary_horizontal_plane = optics.arcplane.ArcPlane(rho=0.0)
+    ending_vertical_plane = optics.arcplane.ArcPlane(mu=max_angle)
+    bottom_arc = grow_arc(initial_shell_point, initial_screen_point, initial_screen_point, primary_horizontal_plane, ending_vertical_plane)
+    on_new_arc(bottom_arc)
+    
+    #grow to the right from the first vertical arc
+    left_side_focal_point = left_side_arc.arc_plane.local_to_world(get_focal_point(left_side_arc))
+    top_arc = grow_arc(left_side_arc.world_end_point,
+                       left_side_focal_point,
+                       left_side_focal_point,
+                       ending_horizontal_plane, ending_vertical_plane)
+    on_new_arc(top_arc)
+    
+    #grow up from the second horizontal arc
+    #RESUME: focal point makes no sense
+    bottom_focal_point = bottom_arc.arc_plane.local_to_world(get_focal_point(bottom_arc))
+    right_side_arc = grow_arc(bottom_arc.world_end_point,
+                       bottom_focal_point,
+                       bottom_focal_point,
+                       ending_vertical_plane, ending_horizontal_plane)
+    on_new_arc(right_side_arc)
+    
+    #plot everything in 3D
+    #measure the distance between the two end points
+    return [bottom_arc, top_arc, left_side_arc, right_side_arc]
+
+
 def create_rib_arcs(initial_shell_point, initial_screen_point, screen_normal, principal_ray, process_pool, stop_flag, on_new_arc):
     """
-    Creates a set of ribs and returns all of those arcs.
+    Creates a set of ribs and returns all ogrow_arc(initial_shell_point, initial_screen_point, prev_screen_point, arc_plane, end_arc_plane)f those arcs.
     Really just here to see basic shape and performance.
     """
     
@@ -129,23 +166,6 @@ def draw_things(arcs):
     arcs[0].render_rays = rays
     
 def grow_axis(initial_shell_point, initial_screen_point, screen_normal, arc_plane, direction, angle_step, on_new_arc):
-    """
-    Grows a set of arcs along the arc plane.
-    Each arc is optimized to focus light to the starting point.
-    Then we calculate where it happens to focus light for the ending point, and use that as the place for the next arc to focus.
-    
-    :param initial_shell_point: where the first arc start from
-    :type  initial_shell_point: Point3D
-    :param initial_screen_point: where to focus the first arc
-    :type  initial_screen_point: Point3D
-    :param arc_plane: all arcs will exist only in this plane
-    :type  arc_plane: ArcPlane
-    :param direction: Which direction to grow the arcs within the arc_plane
-    :type  direction: float
-    
-    :returns: all of the arcs that were created, in order
-    :rtype: list(Arc)
-    """
     arcs = []
     angle = 0.0
     shell_point = arc_plane.world_to_local(initial_shell_point)
@@ -165,6 +185,14 @@ def grow_axis(initial_shell_point, initial_screen_point, screen_normal, arc_plan
         prev_screen_point = arc.screen_point
         focal_screen_point = get_focal_point(arc)
     return arcs
+    
+def grow_arc(initial_shell_point, initial_screen_point, prev_screen_point, arc_plane, end_arc_plane):
+    shell_point = arc_plane.world_to_local(initial_shell_point)
+    prev_screen_point = arc_plane.world_to_local(prev_screen_point)
+    focal_screen_point = arc_plane.world_to_local(initial_screen_point)
+    #TODO: entirely remove screen normal
+    transformed_screen_normal = Point2D(1.0, 0.0)
+    return optics.arc.grow_arc(shell_point, focal_screen_point, transformed_screen_normal, prev_screen_point, arc_plane, end_arc_plane)
 
 def _generate_rays(arc, main_ray_vector):
     directions = get_spaced_points(arc.start_point, arc.end_point)
