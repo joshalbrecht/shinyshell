@@ -26,6 +26,9 @@ def create_patch(
     Given a bunch of initial parameters, create a new part of the surface.
     This is an initialization function for Patch
     """
+    
+    poly_order = optics.globals.POLY_ORDER
+    
     #figure out which direction we are growing (in the mu rho directions)
     mu_direction = FORWARD
     if mu_start_plane.angle < mu_end_plane.angle:
@@ -40,12 +43,12 @@ def create_patch(
         prev_mu_arc = prev_mu_patch.get_edge_arc(False, mu_direction)
         prev_mu_normal_function = prev_mu_patch.surface_normal_function()
     else:
-        prev_mu_arc = optics.arc.new_grow_arc(shell_point, screen_point, rho_start_plane, mu_start_plane, mu_end_plane, previous_normal_function=None, falloff=-1.0)
+        prev_mu_arc = optics.arc.new_grow_arc(shell_point, screen_point, rho_start_plane, mu_start_plane, mu_end_plane, previous_normal_function=None, falloff=-1.0, poly_order=poly_order)
     if prev_rho_patch != None:
         prev_rho_arc = prev_rho_patch.get_edge_arc(True, rho_direction)
         prev_rho_normal_function = prev_rho_patch.surface_normal_function()
     else:
-        prev_rho_arc = optics.arc.new_grow_arc(shell_point, screen_point, mu_start_plane, rho_start_plane, rho_end_plane, previous_normal_function=None, falloff=-1.0)
+        prev_rho_arc = optics.arc.new_grow_arc(shell_point, screen_point, mu_start_plane, rho_start_plane, rho_end_plane, previous_normal_function=None, falloff=-1.0, poly_order=poly_order)
 
     #create a grid of points for two conflicting sets of ribs
     vertical_grid = _make_grid(True, shell_point, screen_point, mu_start_plane, mu_end_plane, rho_start_plane, rho_end_plane, prev_mu_normal_function)
@@ -67,6 +70,10 @@ def create_patch(
     projected_prev_arc_points = project(prev_arc_points)
     
     #optimize performance of the surface by finding the right mix of points to minimize focal error in both directions
+    taylor_surface_radius = 1.1 * max((
+        numpy.linalg.norm(prev_mu_arc.points[0] - prev_mu_arc.points[-1]),
+        numpy.linalg.norm(prev_rho_arc.points[0] - prev_rho_arc.points[-1])
+    ))
     projected_screen_point = project(screen_point)
     projected_ray_normal = space.normal_to_space(normalize(shell_point - ORIGIN))
     polys = {}
@@ -88,7 +95,7 @@ def create_patch(
         #TODO: need to make sure this is extremely accurate
         #if it isn't, then we have to ensure that we're using the taylor poly and casting rays to create the other edge arcs instead
         #because the point grid won't have enough accuracy
-        poly = optics.localpoly.fit_poly(space, all_points)
+        poly = optics.localpoly.fit_poly(space, all_points, projected_screen_point, taylor_surface_radius, poly_order)
         #save it for later so we don't have to recalculate
         polys[weight] = poly
         
@@ -148,7 +155,7 @@ def _measure_error(poly, screen_point, rays):
     """
     Figures out where the poly reflects the rays, and returns the distance from there to the screen point
     """
-    reflected_rays = poly.reflect_rays_no_bounds(rays)
+    reflected_rays = poly.reflect_rays(rays)
     distance = 0.0
     for ray in reflected_rays:
         distance += math.sqrt(distToLineSquared(screen_point, ray.start, ray.end))
@@ -205,11 +212,11 @@ class Patch(object):
     def reflect_rays_no_bounds(self, rays):
         """
         :returns: the rays that have been reflected off of our taylor poly surface.
-        Note: these rays will are not restricted to bounce only off of the in-domain section of the poly
-        This is to prevent weirdness at the edges
+        Note: these rays will are not restricted to bounce only off of the in-domain section of the patch
+        This is to prevent weirdness at the edges, but you should be careful to ignore reflections that are outside of the patch space
         """
         projected_rays = [Ray(self.poly_space.point_to_space(ray.start), self.poly_space.point_to_space(ray.end)) for ray in rays]
-        reflected_rays = self.poly.reflect_rays_no_bounds(projected_rays)
+        reflected_rays = self.poly.reflect_rays(projected_rays)
         return [Ray(self.poly_space.point_from_space(ray.start), self.poly_space.point_from_space(ray.end)) for ray in reflected_rays]
     
     def surface_normal_function(self):

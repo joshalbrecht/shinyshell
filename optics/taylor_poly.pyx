@@ -150,11 +150,15 @@ cdef class TaylorPoly(object):
     cdef object domain_sq_radius
     cdef object _points
     cdef object bounding_radius_sq
+    cdef object min_z
+    cdef object max_z
 
-    def __init__(self,cohef=(0,0,0), domain_radius=None, domain_point=None):
+    def __init__(self,cohef=(0,0,0), min_z=-10000.0, max_z=10000.0, domain_radius=None, domain_point=None):
         self.cohef = cohef
         #self.cohef=array(cohef)
         #self.addkey("cohef")
+        self.min_z = min_z
+        self.max_z = max_z
         self.domain_radius = domain_radius
         self.domain_point = normalize(domain_point)
         self.domain_sq_radius = domain_radius * domain_radius
@@ -180,6 +184,10 @@ cdef class TaylorPoly(object):
         return self.cohef
         
     cpdef in_domain(self, p):
+        if p[2] > self.max_z:
+            return False
+        if p[2] < self.min_z:
+            return False
         n = self.domain_point
         delta = p - (p.dot(n) * n)
         return delta.dot(delta) < self.domain_sq_radius
