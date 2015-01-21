@@ -39,11 +39,11 @@ def create_patch(
     if prev_mu_patch != None:
         prev_mu_arc = prev_mu_patch.get_edge_arc(False, mu_direction)
     else:
-        prev_mu_arc = optics.arc.new_grow_arc(shell_point, screen_point, rho_start_plane, mu_end_plane, previous_normal_function=None, falloff=-1.0)
+        prev_mu_arc = optics.arc.new_grow_arc(shell_point, screen_point, rho_start_plane, mu_start_plane, mu_end_plane, previous_normal_function=None, falloff=-1.0)
     if prev_rho_patch != None:
         prev_rho_arc = prev_rho_patch.get_edge_arc(True, rho_direction)
     else:
-        prev_rho_arc = optics.arc.new_grow_arc(shell_point, screen_point, mu_start_plane, rho_end_plane, previous_normal_function=None, falloff=-1.0)
+        prev_rho_arc = optics.arc.new_grow_arc(shell_point, screen_point, mu_start_plane, rho_start_plane, rho_end_plane, previous_normal_function=None, falloff=-1.0)
     
     #create a patch. not fully initialized
     patch = optics.patch.Patch(shell_point, screen_point, prev_rho_arc, prev_mu_arc, rho_start_plane, rho_end_plane, mu_start_plane, mu_end_plane)
@@ -62,8 +62,8 @@ def create_patch(
     projected_horizontal_grid = project(horizontal_grid)
     delta_grid = projected_horizontal_grid - projected_vertical_grid
     base_grid = projected_vertical_grid
-    prev_rho_arc_points = prev_rho_arc.points()
-    prev_mu_arc_points = prev_mu_arc.points()[1:] #removes the shell_point so it is not duplicated
+    prev_rho_arc_points = prev_rho_arc.points
+    prev_mu_arc_points = prev_mu_arc.points[1:] #removes the shell_point so it is not duplicated
     prev_arc_points = numpy.concatenate(prev_rho_arc_points, prev_mu_arc_points)
     projected_prev_arc_points = project(prev_arc_points)
     
@@ -137,11 +137,8 @@ class Patch(object):
         falloff = blah
         if arc_along_mu:
             arc_slice_angles = numpy.linspace(self.rho_start_plane.angle, self.rho_end_plane.angle, num_slices)[1:]
-            cross_arc_slice_angles = numpy.linspace(self.mu_start_plane.angle, self.mu_end_plane.angle, num_slices)[1:]
         else:
             arc_slice_angles = numpy.linspace(self.mu_start_plane.angle, self.mu_end_plane.angle, num_slices)[1:]
-            cross_arc_slice_angles = numpy.linspace(self.rho_start_plane.angle, self.rho_end_plane.angle, num_slices)[1:]
-        cross_planes = [optics.arcplane.ArcPlane() for blah in blah]
         #does not contain the start points (eg, starting arcs)
         grid = numpy.zeros((num_slices, num_slices))
         for i in range(0, len(arc_slice_angles)):
@@ -152,17 +149,14 @@ class Patch(object):
                 arc_plane = optics.arcplane.ArcPlane(mu=angle)
             #TODO: keep everything in real world coordinates. no projection except for taylor poly / grid
             arc = grow_arc(projected_eye_point, projected_shell_point, projected_screen_point, projected_plane, projected_end_plane, previous_normal_function, falloff)
-            #intersect each of the cross planes with the arc to get actual points
-            for j in range(0, len(cross_planes)):
-                cross_plane = cross_planes[j]
-                intersection = arc.intersect_poly(cross_plane)
+            for j in range(1, len(arc)):
                 if arc_along_mu:
                     mu = i
                     rho = j
                 else:
                     mu = j
                     rho = i
-                grid[i][j] = intersection
+                grid[mu][rho] = arc[i]
         
         return grid
     

@@ -6,8 +6,6 @@ Goal is to be able to delete calculations.py and new_calculations.py when finish
 
 import math
 
-import scipy.optimize
-
 from optics.base import * # pylint: disable=W0401,W0614
 import optics.globals
 import optics.utils

@@ -27,13 +27,15 @@ class ArcPlane(object):
             self.angle = self.rho
             self.rotation_axis = Point3D(1.0, 0.0, 0.0)
             base_plane_normal = Point3D(0.0, 1.0, 0.0)
+        if self.angle < 0.0:
+            base_plane_normal *= -1
             
         self.local_to_world_rotation_matrix = numpy.zeros((3,3))
         optics.rotation_matrix.R_axis_angle(self.local_to_world_rotation_matrix, self.rotation_axis, self.angle)
         self.world_to_local_rotation_matrix = numpy.linalg.inv(self.local_to_world_rotation_matrix)
         base_view_normal = Point3D(0.0, 0.0, -1.0)
         self.view_normal = self.local_to_world_rotation_matrix.dot(base_view_normal)
-        self.normal = self.local_to_world_rotation_matrix.dot(base_view_normal)
+        self.normal = self.local_to_world_rotation_matrix.dot(base_plane_normal)
         self.plane = Plane(Point3D(0.0, 0.0, 0.0), self.normal)
         
     def world_to_local(self, point):
@@ -59,4 +61,12 @@ class ArcPlane(object):
         else:
             flat_point = Point3D(point[0], 0.0, -point[1])
         return self.local_to_world_rotation_matrix.dot(flat_point)
+    
+    #TODO: this is a really lazy implementation...
+    def project(self, point):
+        """
+        :returns: the closest point on the plane
+        :rtype: Point3D
+        """
+        return self.local_to_world(self.world_to_local(point))
     

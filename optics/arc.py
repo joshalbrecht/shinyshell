@@ -19,11 +19,14 @@ import optics.rotation_matrix
 def new_grow_arc(
     shell_point,
     screen_point,
-    plane_containing_arc,
-    ending_plane,
+    arc_plane,
+    start_cross_plane,
+    end_cross_plane,
     previous_normal_function=None,
     falloff=-1.0,
-    step_size=0.01
+    step_size=0.01,
+    num_slices=20,
+    poly_order=None
     ):
     """
     Creates an arc through space within the given plane, ending at the end plane. The arc is
@@ -34,10 +37,12 @@ def new_grow_arc(
     :type  shell_point: Point2D
     :param screen_point: where this arc should focus light
     :type  screen_point: Point2D
-    :param plane_containing_arc: the plane that will contain this arc. note that it is orthogonal to end_arc_plane.
-    :type  plane_containing_arc: ArcPlane
-    :param ending_plane: where this arc should terminate
-    :type  ending_plane: ArcPlane
+    :param arc_plane: the plane that will contain this arc. note that it is orthogonal to end_arc_plane.
+    :type  arc_plane: ArcPlane
+    :param start_cross_plane: where this arc begins
+    :type  start_cross_plane: ArcPlane
+    :param end_cross_plane: where this arc should terminate
+    :type  end_cross_plane: ArcPlane
     :param previous_normal_function: maps from points in the previous patch space to surface normal.
         Used for smoothing the transition between the two patches.
     :type  previous_normal_function: function(Point3D) -> Point3D
@@ -46,23 +51,19 @@ def new_grow_arc(
     :type  falloff: float
     :param step_size: how accurately we should integrate through the vector field. is roughly in mm
     :type  step_size: float
+    :param num_slices: how many equal angular slices to create for the arc. It will have num_slices+1 total points.
+    :type  num_slices: float
+    :param poly_order: what order of polynomial to fit for the arc
+    :type  poly_order: int
     
     :returns: the arc that best focuses light to that screen_point
-    :rtype: Arc
+    :rtype: NewArc
     """
     
-    #create the arc with basic parameters. not fully initialized yet, but can at least use the transformation
-    direction = 1.0
-    if ending_plane.angle < 0.0:
-        direction = -1.0
-        
-    #TODO: I suppose all arcs should contain that logic about having points at the correct mu and rho intersections?
-    #otherwise the first one will be off and it will just be more confusing
-    arc = NewArc(plane_containing_arc, shell_point, screen_point, screen_normal, direction)
-    
-    end_plane_line_start = ORIGIN
-    end_plane_line_end = ending_plane.view_normal
-    
+    if poly_order == None:
+        poly_order = optics.globals.POLY_ORDER
+
+    #use the vector field to define the exact shape of the arc
     desired_light_direction = -1.0 * normalize(shell_point)
     def vector_field_derivative(point, t):
         """
@@ -70,75 +71,159 @@ def new_grow_arc(
         """
         point_to_screen_vec = normalize(screen_point - point)
         surface_normal = normalize(point_to_screen_vec + desired_light_direction)
-        #TODO: define plane.normal
-        derivative = normalize(numpy.cross(surface_normal, plane_containing_arc.normal))
+        derivative = normalize(numpy.cross(surface_normal, arc_plane.normal))
         return derivative
-    
-    #TODO: this is a pretty arbitrary, pointlessly high max_t
-    #we can calulate the max_t much more precisely because arcs are mostly linear...
-    
-    #use the vector field to define the exact shape of the arc
-    max_t = 2.0 * optics.globals.LIGHT_RADIUS
+    #note: since arcs are mostly linear, we calculate the max_t value based on how far we're travelling, roughly
+    #if we that didn't allow us to walk far enough, the extrapolated polynomial is all that's really important anyway,
+    #so it will work out
+    max_t = numpy.linalg.norm(end_cross_plane.project(shell_point) - shell_point)
     t_values = numpy.arange(0.0, max_t, step_size)
     points = scipy.integrate.odeint(vector_field_derivative, shell_point, t_values)
     
     #fit a 2D polynomial to the points
-    #TODO: put a ton of weight on 0,0, must pass through there
-    #TODO: possibly put less weight on points that are farther away?
-    #TODO: also, we don't really care that much about points that have gone farther than this poly really will..  should probably trim those
-    #which should be relatively easy, because it's going to be relatively flat and we know how far approximately we'll go
-    coefficients = numpy.polynomial.polynomial.polyfit(points[:, 0], points[:, 1], optics.globals.POLY_ORDER)
-    arc._poly = numpy.polynomial.polynomial.Polynomial(coefficients)
-    arc._derivative = arc._poly.deriv(1)
+    direction = 1.0
+    if end_cross_plane.angle < 0.0:
+        direction = -1.0
+    arc_poly = create_arc_poly(arc_plane, direction, shell_point, screen_point, points, poly_order)
     
-    #plt.plot(points[:,0], points[:, 1],"r")
-    #plt.plot(points[:,0], arc._poly(points[:, 0]),"b")
-    #plt.plot(projected_origin[0], projected_origin[1],"ro")
-    #plt.plot(projected_screen_point[0], projected_screen_point[1],"bo")
-    #plt.show()
+    #find the intersection between that poly and each cross plane
+    cross_arc_slice_angles = numpy.linspace(start_cross_plane.angle, end_cross_plane.angle, num_slices)[1:]
+    if start_cross_plane.mu != None:
+        cross_planes = [optics.arcplane.ArcPlane(mu=angle) for angle in cross_arc_slice_angles]
+    else:
+        cross_planes = [optics.arcplane.ArcPlane(rho=angle) for angle in cross_arc_slice_angles]
+    arc_points = [shell_point]
+    for cross_plane in cross_planes:
+        intersection = arc_poly.intersect_plane(cross_plane)
+        arc_points.append(intersection)
+    arc = NewArc(arc_points)
     
-    #intersect the poly and the projected_end_plane_vector to find the bounds for the arc
-    #find the first intersection that is positive and closest to 0
-    line_poly = _convert_line_to_poly_coefs(projected_end_plane_line_start, projected_end_plane_line_end)
-    roots = numpy.real(numpy.polynomial.polynomial.polyroots(coefficients - line_poly))
-    positive_roots = [r for r in roots if r > 0]
-    
-    #if ending_plane.mu > 0.5 and plane_containing_arc.rho > 0.14:
-    #if plane_containing_arc.rho > 0.14:
-    #if plane_containing_arc.rho != None:
-        #plt.plot(points[:,0], points[:, 1],"r")
-        #plt.plot(points[:,0], arc._poly(points[:, 0]),"b")
-        #plt.plot(points[:,0], numpy.polynomial.polynomial.Polynomial(line_poly)(points[:,0]), "g-")
-        #plt.plot(projected_origin[0], projected_origin[1],"ro")
-        #plt.plot(projected_screen_point[0], projected_screen_point[1],"bo")
-        #plt.show()
-    
-    if len(positive_roots) <= 0:
-        x_values = numpy.array([0.0, 80.0])
-        plt.plot(points[:,0], points[:, 1],"r")
-        plt.plot(x_values, b + m * x_values, 'b-')
-        plt.plot(projected_origin[0], projected_origin[1], "ro")
-        plt.plot(projected_screen_point[0], projected_screen_point[1], "bo")
+    if optics.debug.ARC_CREATION:
+        #plot the original points and the resulting interpolated points
+        fig = plt.figure()
+        plot = fig.add_subplot(111, projection='3d')
+        plot.scatter(points[:, 0], points[:, 1], points[:, 2], c='r', marker='x')
+        plot.scatter(arc_points[:, 0], arc_points[:, 1], arc_points[:, 2], c='g', marker='o')
+        plot.scatter(ORIGIN[0], ORIGIN[1], ORIGIN[2], c='b', marker='*')
+        plot.scatter(screen_point[0], screen_point[1], screen_point[2], c='r', marker='*')
+        plot.set_xlabel('X')
+        plot.set_ylabel('Y')
+        plot.set_zlabel('Z')
         plt.show()
     
-    arc.max_x = min(positive_roots)
-    
     return arc
+
+#TODO: put a ton of weight on 0,0, must pass through there?
+#TODO: possibly put less weight on points that are farther away?
+def create_arc_poly(arc_plane, direction, shell_point, screen_point, points, poly_order):
+    """
+    Constructs and initializes an ArcPoly
+    """
+    
+    #transform the points into a local space that will actually fit a polynomial
+    shell_point_in_plane = arc_plane.world_to_local(shell_point)
+    screen_point_in_plane = arc_plane.world_to_local(screen_point)
+    arc_poly = ArcPoly(arc_plane, shell_point_in_plane, screen_point_in_plane, direction)
+    projected_points = numpy.vectorize(lambda x: arc_poly.plane_to_local(arc_plane.world_to_local(x)))(points)
+    
+    #fit the polynomial to the points
+    coefficients = numpy.polynomial.polynomial.polyfit(projected_points[:, 0], projected_points[:, 1], poly_order)
+    poly = numpy.polynomial.polynomial.Polynomial(coefficients) # pylint: disable=E1101
+    
+    if optics.debug.POLYARC_FITTING:
+        projected_origin = arc_poly.plane_to_local(arc_plane.world_to_local(ORIGIN))
+        projected_screen_point = arc_poly.plane_to_local(arc_plane.world_to_local(screen_point))
+        plt.plot(projected_points[:, 0], projected_points[:, 1],"r")
+        plt.plot(projected_origin[0], projected_origin[1],"ro")
+        plt.plot(projected_screen_point[0], projected_screen_point[1],"bo")
+        plt.show()
+    
+    arc_poly._poly = poly
+    arc_poly._derivative = poly.deriv(1)
+    
+    return arc_poly
+
+class ArcPoly(object):
+    """
+    A polynomial in an ArcPlane.
+    
+    Has its own internal crazy coordinate system.
+    """
+    
+    def __init__(self, arc_plane, shell_point, screen_point, direction):
+        self.arc_plane = arc_plane
+        self.shell_point = shell_point
+        self.screen_point = screen_point
+        self.direction = direction
+        
+        self._local_to_plane_translation = shell_point
+        self._plane_to_local_translation = -1.0 * self._local_to_plane_translation
+        
+        shell_to_eye_normal = -1.0 * normalize(shell_point)
+        angle = normalized_vector_angle(shell_to_eye_normal, Point2D(0.0, 1.0))
+        self._local_to_plane_rotation = numpy.array([[math.cos(angle), -math.sin(angle)], [math.sin(angle), math.cos(angle)]])
+        self._plane_to_local_rotation = numpy.linalg.inv(self._local_to_plane_rotation)
+        #TODO: this is dumb.
+        if math.fabs(self._plane_to_local_rotation.dot(shell_to_eye_normal)[1] - 1.0) > 0.00000001:
+            angle *= -1.0
+            self._local_to_plane_rotation = numpy.array([[math.cos(angle), -math.sin(angle)], [math.sin(angle), math.cos(angle)]])
+            self._plane_to_local_rotation = numpy.linalg.inv(self._local_to_plane_rotation)
+        
+        #set later
+        self._poly = None
+        self._derivative = None
+    
+    def plane_to_local(self, point):
+        """
+        Converts Point2D in plane space to Point2D in arc space
+        """
+        transformed_point = self._plane_to_local_rotation.dot(point + self._plane_to_local_translation)
+        return Point2D(self.direction * transformed_point[0], transformed_point[1])
+        
+    def local_to_plane(self, point):
+        """
+        Converts Point2D in arc space to Point2D in plane space
+        """
+        reflected_point = Point2D(self.direction * point[0], point[1])
+        return self._local_to_plane_rotation.dot(reflected_point) + self._local_to_plane_translation
+        
+    def intersect_plane(self, plane):
+        """
+        Given an ArcPlane, return the world point where it intersects our polynomial
+        """
+        ray_normal = self.plane_to_local(self.arc_plane.world_to_local(plane.view_normal))
+        ray_start = self.plane_to_local(Point2D(0.0, 0.0))
+        ray = Ray(ray_start, ray_start + ray_normal)
+        
+        #convert ray to the form mx + b
+        line_poly = _convert_line_to_poly_coefs(ray.start, ray.end)
+        
+        #select the intersection that is forward of ray start, and closest to zero, and mostly real (because of numerical inaccuracies)
+        slope = line_poly[1]
+        roots = numpy.polynomial.polynomial.polyroots(self._poly.coef - line_poly)
+        best_root = float("inf")
+        for root in numpy.real_if_close(roots, tol=1000000):
+            if numpy.isreal(root):
+                root = numpy.real(root)
+                #TODO: might need to be reversed
+                blah
+                if (slope < 0.0 and root > ray.start[0]) or (slope >= 0.0 and root < ray.start[0]):
+                    if math.fabs(root) < math.fabs(best_root):
+                        best_root = root
+        return self.arc_plane.local_to_world(self.local_to_plane(Point2D(best_root, self._poly(best_root))))
 
 #TODO: replace Arc() with this class completely, as soon as this new approach works...
 class NewArc(object):
     """
+    An Arc is simply a list of points.
+    All points are contained within a single ArcPlane (eg, mu or rho is constant).
+    All points are an equal angular step apart in either mu or rho (eg, whichever is not constant).
+    All points are in world space.
+    This makes meshing, rendering, etc, extremely easy.
     """
     
-    def __init__(self):
-        blah
-        
-    def points(self):
-        """
-        :returns: a list of all points in this arc. Should be at the mu + rho intersections that we find interesting, and
-        should include both start and end points. All points will be in world space.
-        """
-        return blah
+    def __init__(self, points):
+        self.points = points
 
 #TODO: implement flatness_falloff. make a function that defines the derivative given some parameters, then use both of them for the real derivative function
 #OPT: make these derivative functions in cython instead
