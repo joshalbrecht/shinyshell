@@ -74,9 +74,7 @@ def new_grow_arc(
         derivative = normalize(numpy.cross(surface_normal, arc_plane.normal))
         return derivative
     #note: since arcs are mostly linear, we calculate the max_t value based on how far we're travelling, roughly
-    #if we that didn't allow us to walk far enough, the extrapolated polynomial is all that's really important anyway,
-    #so it will work out
-    max_t = numpy.linalg.norm(end_cross_plane.project(shell_point) - shell_point)
+    max_t = 1.3 * numpy.linalg.norm(end_cross_plane.project(shell_point) - shell_point)
     t_values = numpy.arange(0.0, max_t, step_size)
     points = scipy.integrate.odeint(vector_field_derivative, shell_point, t_values)
     
@@ -95,6 +93,7 @@ def new_grow_arc(
     arc_points = [shell_point]
     for cross_plane in cross_planes:
         intersection = arc_poly.intersect_plane(cross_plane)
+        assert intersection != None, "failed to intersect the plane. Maybe need to increase max_t?"
         arc_points.append(intersection)
     arc_points = numpy.array(arc_points)
     arc = NewArc(arc_points)
@@ -231,6 +230,8 @@ class ArcPoly(object):
                 if root > self.min_x and root < self.max_x:
                     if math.fabs(root) < math.fabs(best_root):
                         best_root = root
+        if best_root == float("inf"):
+            return None
         return self.arc_plane.local_to_world(self.local_to_plane(Point2D(best_root, self._poly(best_root))))
 
 #TODO: replace Arc() with this class completely, as soon as this new approach works...

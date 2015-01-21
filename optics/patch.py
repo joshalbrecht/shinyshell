@@ -55,8 +55,21 @@ def create_patch(
         prev_rho_normal_function = None
 
     #create a grid of points for two conflicting sets of ribs
-    vertical_grid = _make_grid(True, shell_point, screen_point, mu_start_plane, mu_end_plane, rho_start_plane, rho_end_plane, prev_mu_normal_function)
-    horizontal_grid = _make_grid(False, shell_point, screen_point, mu_start_plane, mu_end_plane, rho_start_plane, rho_end_plane, prev_rho_normal_function)
+    vertical_grid = _make_grid(True, prev_rho_arc, shell_point, screen_point, mu_start_plane, mu_end_plane, rho_start_plane, rho_end_plane, prev_mu_normal_function)
+    horizontal_grid = _make_grid(False, prev_mu_arc, shell_point, screen_point, mu_start_plane, mu_end_plane, rho_start_plane, rho_end_plane, prev_rho_normal_function)
+    
+    if optics.debug.RIB_CREATION:
+        #plot the original points and the resulting interpolated points
+        axes = matplotlib.pyplot.subplot(111, projection='3d')
+        vertical_points = numpy.vstack(vertical_grid)
+        horizontal_points = numpy.vstack(horizontal_grid)
+        axes.scatter(vertical_points[:, 0], vertical_points[:, 1], vertical_points[:, 2], c='r', marker='o').set_label('vertical grid')
+        axes.scatter(horizontal_points[:, 0], horizontal_points[:, 1], horizontal_points[:, 2], c='g', marker='o').set_label('horizontal grid')
+        axes.set_xlabel('X')
+        axes.set_ylabel('Y')
+        axes.set_zlabel('Z')
+        matplotlib.pyplot.legend()
+        matplotlib.pyplot.show()
     
     #convert the grids to local space for this patch so we can fit taylor polys
     shell_point_to_eye_normal = normalize(ORIGIN - shell_point)
@@ -79,8 +92,8 @@ def create_patch(
     base_grid = projected_vertical_grid
     prev_rho_arc_points = prev_rho_arc.points
     prev_mu_arc_points = prev_mu_arc.points[1:] #removes the shell_point so it is not duplicated
-    prev_arc_points = numpy.concatenate(prev_rho_arc_points, prev_mu_arc_points)
-    projected_prev_arc_points = numpy.array(space.point_to_space(point) for point in prev_arc_points)
+    prev_arc_points = numpy.vstack((prev_rho_arc_points, prev_mu_arc_points))
+    projected_prev_arc_points = numpy.array([space.point_to_space(point) for point in prev_arc_points])
     
     #optimize performance of the surface by finding the right mix of points to minimize focal error in both directions
     taylor_surface_radius = 1.1 * max((
@@ -101,8 +114,7 @@ def create_patch(
         
         #TODO: add greater weights to these points
         #include the points from existing arcs and shell point
-        all_points = numpy.vstack(grid)
-        all_points.concatenate(projected_prev_arc_points)
+        all_points = numpy.vstack((numpy.vstack(grid), projected_prev_arc_points))
         
         #fit taylor poly to the points
         #TODO: need to make sure this is extremely accurate
@@ -121,7 +133,7 @@ def create_patch(
             axes.plot(all_points[:, 0], all_points[:, 1], all_points[:, 2], c='g', marker='o', label='weighted grid')
             x, y = all_points[:, 0], all_points[:, 1]
             axes.plot_wireframe(x, y, poly.get_z_for_plot(x, y), 'g', label="surface")
-            axes.plot(delta_points[:, 0], delta_points[:, 1], delta_points[:, 2], c='b', marker='o', label='arc points')
+            axes.plot(delta_points[:, 0], delta_points[:, 1], delta_points[:, 2], c='b', marker='o', label='delta points')
             axes.set_xlabel('X')
             axes.set_ylabel('Y')
             axes.set_zlabel('Z')
@@ -150,34 +162,49 @@ def create_patch(
     
     return patch
 
-def _make_grid(arc_along_mu, shell_point, screen_point, mu_start_plane, mu_end_plane, rho_start_plane, rho_end_plane, previous_normal_function, num_slices=10):
+def _make_grid(arc_along_mu, prev_arc, shell_point, screen_point, mu_start_plane, mu_end_plane, rho_start_plane, rho_end_plane, previous_normal_function, num_slices=10):
         
     #create a bunch of arcs along the correct direction (in patch space)
     if arc_along_mu:
-        arc_slice_angles = numpy.linspace(rho_start_plane.angle, rho_end_plane.angle, num_slices)[1:]
+        arc_slice_angles = numpy.linspace(rho_start_plane.angle, rho_end_plane.angle, num_slices+1)[1:]
         start_plane = mu_start_plane
         end_plane = mu_end_plane
     else:
-        arc_slice_angles = numpy.linspace(mu_start_plane.angle, mu_end_plane.angle, num_slices)[1:]
+        arc_slice_angles = numpy.linspace(mu_start_plane.angle, mu_end_plane.angle, num_slices+1)[1:]
         start_plane = rho_start_plane
         end_plane = rho_end_plane
     #does not contain the start points (eg, starting arcs)
     grid = numpy.zeros((num_slices, num_slices, 3))
+    debug_points = []
     for i in range(0, len(arc_slice_angles)):
         angle = arc_slice_angles[i]
+        shell_point_from_arc = prev_arc.points[i+1]
         if arc_along_mu:
             arc_plane = optics.arcplane.ArcPlane(rho=angle)
         else:
             arc_plane = optics.arcplane.ArcPlane(mu=angle)
-        arc = optics.arc.new_grow_arc(shell_point, screen_point, arc_plane, start_plane, end_plane, previous_normal_function)
-        for j in range(1, len(arc.points)):
+        arc = optics.arc.new_grow_arc(shell_point_from_arc, screen_point, arc_plane, start_plane, end_plane, previous_normal_function, num_slices=num_slices)
+        for j in range(0, len(arc.points)):
             if arc_along_mu:
                 mu = i
                 rho = j
             else:
                 mu = j
                 rho = i
-            grid[mu][rho] = arc.points[i]
+            grid[mu][rho] = arc.points[j]
+            
+        if optics.debug.INDIVIDUAL_RIB_CREATION:
+            debug_points += list(arc.points)
+            #plot the original points and the resulting interpolated points
+            axes = matplotlib.pyplot.subplot(111, projection='3d')
+            points = numpy.array(debug_points)
+            axes.scatter(points[:, 0], points[:, 1], points[:, 2], c='r', marker='o').set_label('grid')
+            axes.set_xlabel('X')
+            axes.set_ylabel('Y')
+            axes.set_zlabel('Z')
+            matplotlib.pyplot.legend()
+            matplotlib.pyplot.show()
+            x = 4
     return grid
 
 def _measure_error(poly, screen_point, rays):
