@@ -68,6 +68,10 @@ def grow_surface(initial_shell_point, initial_screen_point, screen_normal, princ
         if mu_idx == 0 and rho_idx == 0:
             shell_point = initial_shell_point
             screen_point = initial_screen_point
+            mu_start_plane = optics.arcplane.ArcPlane(mu=0.0)
+            mu_end_plane = optics.arcplane.ArcPlane(mu=angle_step)
+            rho_start_plane = optics.arcplane.ArcPlane(rho=0.0)
+            rho_end_plane = optics.arcplane.ArcPlane(rho=angle_step)
         else:
             if mu_idx != 0:
                 if mu_idx > 0:

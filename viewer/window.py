@@ -302,7 +302,7 @@ class Window(pyglet.window.Window):
             section.render()
             
         self._set_scale_colors_by_quality(self._view_focal_error)
-        for arc in self.arcs:
+        for arc in self.patches:
             arc.render()
             
         self._shell_point.render()

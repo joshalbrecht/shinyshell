@@ -59,7 +59,16 @@ def create_patch(
     shell_point_to_screen_normal = normalize(screen_point - shell_point)
     shell_point_surface_normal = normalize(shell_point_to_eye_normal + shell_point_to_screen_normal)
     space = CoordinateSpace(shell_point, shell_point_surface_normal)
-    project = numpy.vectorize(space.point_to_space)
+    #TODO: This could be done MUCH more efficiently...
+    def project(grid):
+        """
+        Convert grids into a different space. 
+        """
+        new_grid = numpy.zeros((len(grid), len(grid[0]), 3))
+        for i in range(0, len(grid)):
+            for j in range(0, len(grid[0])):
+                new_grid[i][j] = space.point_to_space(grid[i][j])
+        return new_grid
     projected_vertical_grid = project(vertical_grid)
     projected_horizontal_grid = project(horizontal_grid)
     delta_grid = projected_horizontal_grid - projected_vertical_grid
@@ -67,14 +76,14 @@ def create_patch(
     prev_rho_arc_points = prev_rho_arc.points
     prev_mu_arc_points = prev_mu_arc.points[1:] #removes the shell_point so it is not duplicated
     prev_arc_points = numpy.concatenate(prev_rho_arc_points, prev_mu_arc_points)
-    projected_prev_arc_points = project(prev_arc_points)
+    projected_prev_arc_points = numpy.array(space.point_to_space(point) for point in prev_arc_points)
     
     #optimize performance of the surface by finding the right mix of points to minimize focal error in both directions
     taylor_surface_radius = 1.1 * max((
         numpy.linalg.norm(prev_mu_arc.points[0] - prev_mu_arc.points[-1]),
         numpy.linalg.norm(prev_rho_arc.points[0] - prev_rho_arc.points[-1])
     ))
-    projected_screen_point = project(screen_point)
+    projected_screen_point = space.point_to_space(screen_point)
     projected_ray_normal = space.normal_to_space(normalize(shell_point - ORIGIN))
     polys = {}
     def error_for_weighting(weight):

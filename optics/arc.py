@@ -96,19 +96,21 @@ def new_grow_arc(
     for cross_plane in cross_planes:
         intersection = arc_poly.intersect_plane(cross_plane)
         arc_points.append(intersection)
+    arc_points = numpy.array(arc_points)
     arc = NewArc(arc_points)
     
     if optics.debug.ARC_CREATION:
         #plot the original points and the resulting interpolated points
         fig = plt.figure()
         plot = fig.add_subplot(111, projection='3d')
-        plot.scatter(points[:, 0], points[:, 1], points[:, 2], c='r', marker='x')
-        plot.scatter(arc_points[:, 0], arc_points[:, 1], arc_points[:, 2], c='g', marker='o')
-        plot.scatter(ORIGIN[0], ORIGIN[1], ORIGIN[2], c='b', marker='*')
-        plot.scatter(screen_point[0], screen_point[1], screen_point[2], c='r', marker='*')
+        plot.scatter(points[:, 0], points[:, 1], points[:, 2], c='r', marker='x', label='original points')
+        plot.scatter(arc_points[:, 0], arc_points[:, 1], arc_points[:, 2], c='g', marker='o', label='arc points')
+        plot.scatter(ORIGIN[0], ORIGIN[1], ORIGIN[2], c='b', marker='*', label='eye')
+        plot.scatter(screen_point[0], screen_point[1], screen_point[2], c='r', marker='*', label='screen')
         plot.set_xlabel('X')
         plot.set_ylabel('Y')
         plot.set_zlabel('Z')
+        plt.legend()
         plt.show()
     
     return arc
@@ -124,7 +126,10 @@ def create_arc_poly(arc_plane, direction, shell_point, screen_point, points, pol
     shell_point_in_plane = arc_plane.world_to_local(shell_point)
     screen_point_in_plane = arc_plane.world_to_local(screen_point)
     arc_poly = ArcPoly(arc_plane, shell_point_in_plane, screen_point_in_plane, direction)
-    projected_points = numpy.vectorize(lambda x: arc_poly.plane_to_local(arc_plane.world_to_local(x)))(points)
+    projected_points = numpy.array([arc_poly.plane_to_local(arc_plane.world_to_local(point)) for point in points])
+    fudge = 0.1
+    arc_poly.min_x = numpy.min(projected_points[:, 0]) - fudge
+    arc_poly.max_x = numpy.max(projected_points[:, 0]) + fudge
     
     #fit the polynomial to the points
     coefficients = numpy.polynomial.polynomial.polyfit(projected_points[:, 0], projected_points[:, 1], poly_order)
@@ -133,9 +138,10 @@ def create_arc_poly(arc_plane, direction, shell_point, screen_point, points, pol
     if optics.debug.POLYARC_FITTING:
         projected_origin = arc_poly.plane_to_local(arc_plane.world_to_local(ORIGIN))
         projected_screen_point = arc_poly.plane_to_local(arc_plane.world_to_local(screen_point))
-        plt.plot(projected_points[:, 0], projected_points[:, 1],"r")
-        plt.plot(projected_origin[0], projected_origin[1],"ro")
-        plt.plot(projected_screen_point[0], projected_screen_point[1],"bo")
+        plt.plot(projected_points[:, 0], projected_points[:, 1], "r", label="arc points")
+        plt.plot(projected_origin[0], projected_origin[1], "ro", label="eye")
+        plt.plot(projected_screen_point[0], projected_screen_point[1], "bo", label="screen point")
+        plt.legend()
         plt.show()
     
     arc_poly._poly = poly
@@ -170,6 +176,8 @@ class ArcPoly(object):
             self._plane_to_local_rotation = numpy.linalg.inv(self._local_to_plane_rotation)
         
         #set later
+        self.min_x = None
+        self.max_x = None
         self._poly = None
         self._derivative = None
     
@@ -205,9 +213,7 @@ class ArcPoly(object):
         for root in numpy.real_if_close(roots, tol=1000000):
             if numpy.isreal(root):
                 root = numpy.real(root)
-                #TODO: might need to be reversed
-                x = blah
-                if (slope < 0.0 and root > ray.start[0]) or (slope >= 0.0 and root < ray.start[0]):
+                if root > self.min_x and root < self.max_x:
                     if math.fabs(root) < math.fabs(best_root):
                         best_root = root
         return self.arc_plane.local_to_world(self.local_to_plane(Point2D(best_root, self._poly(best_root))))
