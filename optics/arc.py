@@ -25,7 +25,6 @@ def new_grow_arc(
     previous_normal_function=None,
     falloff=-1.0,
     step_size=0.01,
-    num_slices=20,
     poly_order=None
     ):
     """
@@ -51,8 +50,6 @@ def new_grow_arc(
     :type  falloff: float
     :param step_size: how accurately we should integrate through the vector field. is roughly in mm
     :type  step_size: float
-    :param num_slices: how many equal angular slices to create for the arc. It will have num_slices+1 total points.
-    :type  num_slices: float
     :param poly_order: what order of polynomial to fit for the arc
     :type  poly_order: int
     
@@ -85,7 +82,7 @@ def new_grow_arc(
     arc_poly = create_arc_poly(arc_plane, direction, shell_point, screen_point, points, poly_order)
     
     #find the intersection between that poly and each cross plane
-    cross_arc_slice_angles = numpy.linspace(start_cross_plane.angle, end_cross_plane.angle, num_slices)[1:]
+    cross_arc_slice_angles = numpy.linspace(start_cross_plane.angle, end_cross_plane.angle, optics.globals.NUM_SLICES)[1:]
     if start_cross_plane.mu != None:
         cross_planes = [optics.arcplane.ArcPlane(mu=angle) for angle in cross_arc_slice_angles]
     else:

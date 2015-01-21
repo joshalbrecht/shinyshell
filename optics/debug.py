@@ -13,7 +13,7 @@ POLYARC_INTERSECTIONS = False
 ARC_CREATION = False
 
 #whether to plot each rib as it is created
-INDIVIDUAL_RIB_CREATION = True
+INDIVIDUAL_RIB_CREATION = False
 
 #whether to debug the creation of the ribs that become the grid
 RIB_CREATION = True

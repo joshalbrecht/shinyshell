@@ -162,19 +162,19 @@ def create_patch(
     
     return patch
 
-def _make_grid(arc_along_mu, prev_arc, shell_point, screen_point, mu_start_plane, mu_end_plane, rho_start_plane, rho_end_plane, previous_normal_function, num_slices=10):
+def _make_grid(arc_along_mu, prev_arc, shell_point, screen_point, mu_start_plane, mu_end_plane, rho_start_plane, rho_end_plane, previous_normal_function):
         
     #create a bunch of arcs along the correct direction (in patch space)
     if arc_along_mu:
-        arc_slice_angles = numpy.linspace(rho_start_plane.angle, rho_end_plane.angle, num_slices+1)[1:]
+        arc_slice_angles = numpy.linspace(rho_start_plane.angle, rho_end_plane.angle, optics.globals.NUM_SLICES)[1:]
         start_plane = mu_start_plane
         end_plane = mu_end_plane
     else:
-        arc_slice_angles = numpy.linspace(mu_start_plane.angle, mu_end_plane.angle, num_slices+1)[1:]
+        arc_slice_angles = numpy.linspace(mu_start_plane.angle, mu_end_plane.angle, optics.globals.NUM_SLICES)[1:]
         start_plane = rho_start_plane
         end_plane = rho_end_plane
     #does not contain the start points (eg, starting arcs)
-    grid = numpy.zeros((num_slices, num_slices, 3))
+    grid = numpy.zeros((optics.globals.NUM_SLICES-1, optics.globals.NUM_SLICES-1, 3))
     debug_points = []
     for i in range(0, len(arc_slice_angles)):
         angle = arc_slice_angles[i]
@@ -183,13 +183,13 @@ def _make_grid(arc_along_mu, prev_arc, shell_point, screen_point, mu_start_plane
             arc_plane = optics.arcplane.ArcPlane(rho=angle)
         else:
             arc_plane = optics.arcplane.ArcPlane(mu=angle)
-        arc = optics.arc.new_grow_arc(shell_point_from_arc, screen_point, arc_plane, start_plane, end_plane, previous_normal_function, num_slices=num_slices)
-        for j in range(0, len(arc.points)):
+        arc = optics.arc.new_grow_arc(shell_point_from_arc, screen_point, arc_plane, start_plane, end_plane, previous_normal_function)
+        for j in range(1, len(arc.points)):
             if arc_along_mu:
                 mu = i
-                rho = j
+                rho = j-1
             else:
-                mu = j
+                mu = j-1
                 rho = i
             grid[mu][rho] = arc.points[j]
             
@@ -204,7 +204,6 @@ def _make_grid(arc_along_mu, prev_arc, shell_point, screen_point, mu_start_plane
             axes.set_zlabel('Z')
             matplotlib.pyplot.legend()
             matplotlib.pyplot.show()
-            x = 4
     return grid
 
 def _measure_error(poly, screen_point, rays):

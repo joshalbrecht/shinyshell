@@ -27,3 +27,6 @@ POLY_ORDER = 3
 #based on the fact that your pupil is approximately this big
 #basically defines how big the region is that we are trying to put in focus with a given patch
 LIGHT_RADIUS = 3.0
+
+#defines how many ribs in each arc, roughly
+NUM_SLICES = 10
