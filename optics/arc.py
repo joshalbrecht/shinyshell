@@ -1,14 +1,5 @@
 
-import os
-import sys
-import time
 import math
-import itertools
-import threading
-import traceback
-import string
-import random
-import pickle
 
 import numpy
 import scipy.integrate
@@ -16,14 +7,31 @@ import scipy.optimize
 
 import matplotlib.pyplot as plt
 
-#this is the one thing that is allowed to import *
-from optics.base import *
+from optics.base import * # pylint: disable=W0401,W0614
 import optics.globals
 import optics.utils
 import optics.parallel
 import optics.scale
-import optics.taylor_poly
 import optics.rotation_matrix
+
+def new_grow_arc(shell_point, screen_point, plane_containing_arc, ending_plane, previous_normal_function=None, falloff=-1.0, step_size=0.01):
+    """
+    """
+    return arc
+
+class NewArc(object):
+    """
+    """
+    
+    def __init__(self):
+        blah
+        
+    def points(self):
+        """
+        :returns: a list of all points in this arc. Should be at the mu + rho intersections that we find interesting, and
+        should include both start and end points. All points will be in world space.
+        """
+        return blah
 
 #TODO: implement flatness_falloff. make a function that defines the derivative given some parameters, then use both of them for the real derivative function
 #OPT: make these derivative functions in cython instead
@@ -264,6 +272,7 @@ class Arc(object):
     @property
     def world_shell_point(self):
         return self.arc_plane.local_to_world(self.shell_point)
+    
     
     
     

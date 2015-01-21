@@ -7,12 +7,14 @@ import random
 import string
 import math
 import collections
-import inspect
 
 import numpy
 import OpenGL.GL
 
-import rotation_matrix
+import optics.rotation_matrix
+
+FORWARD = 1.0
+BACKWARD = -1.0
 
 #these are very simple classes. just an alias for a numpy array that gives a little more intentionality to the code
 def Point2D(*args):
@@ -94,13 +96,14 @@ def get_arc_plane_normal(principal_ray, is_horizontal):
     """
     base_principal_ray = Point3D(0.0, 0.0, -1.0)
     ray_rotation = numpy.zeros((3, 3))
-    rotation_matrix.R_2vect(ray_rotation, base_principal_ray, principal_ray)
+    optics.rotation_matrix.R_2vect(ray_rotation, base_principal_ray, principal_ray)
     base_arc_ray = Point3D(1.0, 0.0, 0.0)
     if is_horizontal:
         base_arc_ray = Point3D(0.0, 1.0, 0.0)
     return ray_rotation.dot(base_arc_ray)
 
 PRINCIPAL_RAY = Point3D(0.0, 0.0, -1.0)
+ORIGIN = Point3D(0.0, 0.0, 0.0)
 _H_ARC_NORMAL = get_arc_plane_normal(PRINCIPAL_RAY, True)
 _V_ARC_NORMAL = get_arc_plane_normal(PRINCIPAL_RAY, False)
 
@@ -244,3 +247,41 @@ def get_angle_vec_from_point(point):
     return AngleVector(
         get_theta_from_point(PRINCIPAL_RAY, _H_ARC_NORMAL, _V_ARC_NORMAL, point),
         normalized_vector_angle(PRINCIPAL_RAY, normalize(point)))
+
+#TODO: add a x_vector argument here so that this transformation is fully defined
+class CoordinateSpace(object):
+    """
+    Defines a coordinate space based on a point and a normal to serve as
+    the positive Z vector.
+    """
+    def __init__(self, point, z_normal):
+        self._world_to_local_rotation = numpy.zeros((3, 3))
+        optics.rotation_matrix.R_2vect(self._world_to_local_rotation, z_normal, Point3D(0.0, 0.0, 1.0))
+        self._world_to_local_translation = -1.0 * point
+        self._local_to_world_rotation = numpy.linalg.inv(self._world_to_local_rotation)
+        self._local_to_world_translation = -1.0 * self._world_to_local_translation
+    
+    def point_to_space(self, point):
+        """
+        Transform from a point in world space to a point in this coordinate space
+        """
+        return self._world_to_local_rotation.dot(point + self._world_to_local_translation)
+    
+    def normal_to_space(self, point):
+        """
+        Transform from a normal in world space to a point in this coordinate space
+        """
+        return self._world_to_local_rotation.dot(point)
+    
+    def point_from_space(self, point):
+        """
+        Transform from a point in this coordinate space to a point in world space
+        """
+        return self._local_to_world_rotation.dot(point) + self._local_to_world_translation
+    
+    def normal_from_space(self, point):
+        """
+        Transform from a normal in this coordinate space to a point in world space
+        """
+        return self._local_to_world_rotation.dot(point)
+
