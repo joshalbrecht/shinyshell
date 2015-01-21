@@ -138,6 +138,8 @@ def create_arc_poly(arc_plane, direction, shell_point, screen_point, points, pol
         projected_origin = arc_poly.plane_to_local(arc_plane.world_to_local(ORIGIN))
         projected_screen_point = arc_poly.plane_to_local(arc_plane.world_to_local(screen_point))
         plt.plot(projected_points[:, 0], projected_points[:, 1], "r", label="arc points")
+        x = numpy.linspace(arc_poly.min_x, arc_poly.max_x, 200)
+        plt.plot(x, poly(x), "g", label="polynomial")
         plt.plot(projected_origin[0], projected_origin[1], "ro", label="eye")
         plt.plot(projected_screen_point[0], projected_screen_point[1], "bo", label="screen point")
         plt.legend()
@@ -198,16 +200,30 @@ class ArcPoly(object):
         """
         Given an ArcPlane, return the world point where it intersects our polynomial
         """
-        ray_normal = self.plane_to_local(self.arc_plane.world_to_local(plane.view_normal))
+        ray_end = self.plane_to_local(self.arc_plane.world_to_local(plane.view_normal))
         ray_start = self.plane_to_local(Point2D(0.0, 0.0))
-        ray = Ray(ray_start, ray_start + ray_normal)
+        ray = Ray(ray_start, ray_end)
         
         #convert ray to the form mx + b
         line_poly = _convert_line_to_poly_coefs(ray.start, ray.end)
         
-        #select the intersection that is forward of ray start, and closest to zero, and mostly real (because of numerical inaccuracies)
-        slope = line_poly[1]
+        #TODO: this is a bit odd. should probably select the point closer to the start..
+        #select the intersection that is within the x range, and closest to zero, and mostly real (because of numerical inaccuracies)
         roots = numpy.polynomial.polynomial.polyroots(self._poly.coef - line_poly)
+        
+        if optics.debug.POLYARC_INTERSECTIONS:
+            ray_list = numpy.array([ray.start, ray.end])
+            plt.plot(ray_list[:, 0], ray_list[:, 1], "r-", label="ray")
+            x = numpy.linspace(self.min_x, self.max_x, 100)
+            plt.plot(x, self._poly(x), "b", label="poly")
+            plt.plot(x, numpy.polynomial.polynomial.Polynomial(self._poly.coef - line_poly)(x), "g", label="difference")
+            projected_origin = self.plane_to_local(self.arc_plane.world_to_local(Point3D(0.0, 0.0, 0.0)))
+            plt.plot(projected_origin[0], projected_origin[1], "ro", label="eye")
+            plt.plot(self.screen_point[0], self.screen_point[1], "bo", label="screen")
+            plt.legend()
+            print roots
+            plt.show()
+        
         best_root = float("inf")
         for root in numpy.real_if_close(roots, tol=1000000):
             if numpy.isreal(root):
