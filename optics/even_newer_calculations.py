@@ -6,6 +6,8 @@ Goal is to be able to delete calculations.py and new_calculations.py when finish
 
 import math
 
+import scipy.optimize
+
 from optics.base import * # pylint: disable=W0401,W0614
 import optics.globals
 import optics.utils
@@ -15,7 +17,9 @@ import optics.arc
 import optics.arcplane
 import optics.localpoly
 import optics.patch
+import optics.rotation_matrix
 
+LIGHT_RADIUS = 3.0
 FORCE_FLAT_SCREEN = False
 FOV = 70.0 * math.pi / 180.0
 
@@ -102,12 +106,12 @@ def grow_surface(initial_shell_point, initial_screen_point, screen_normal, princ
         return optics.patch.create_patch(
             shell_point,
             screen_point,
-            rho_start_plane,
-            rho_end_plane,
             mu_start_plane,
             mu_end_plane,
-            prev_rho_patch,
-            prev_mu_patch
+            rho_start_plane,
+            rho_end_plane,
+            prev_mu_patch,
+            prev_rho_patch
         )
     
     def on_patch_completed(patch):
@@ -163,28 +167,45 @@ def get_shell_point(patches, mu, rho):
         point += patch.get_corner(mu, rho)
     return point / len(patches)
 
-def get_focal_point(patches, shell_point):
+def get_focal_point(patches, shell_point, num_rays=5):
     """
     Figures out where the patches focus light that is directed at this shell point
     """
     focal_point = Point3D(0.0, 0.0, 0.0)
     for patch in patches:
+        #create a bunch of parallel rays coming from the eye
+        ray_vector = normalize(shell_point)
+        ray_rotation = numpy.zeros((3, 3))
+        optics.rotation_matrix.R_2vect(ray_rotation, PRINCIPAL_RAY, ray_vector)
+        rays = []
+        for x in numpy.linspace(-LIGHT_RADIUS, LIGHT_RADIUS, num_rays*2+1):
+            for y in numpy.linspace(-LIGHT_RADIUS, LIGHT_RADIUS, num_rays*2+1):
+                start_point = ray_rotation.dot(Point3D(x, y, 0.0))
+                rays.append(Ray(start_point, start_point + ray_vector))
+                
         #find the point such that the spot size is minimized on the screen.
         #can average the normal of the reflected rays to get approximately where the screen goes
         #then iteratively try different distances until we've minimized the spot size there
-        rays = blah
+        focal_point = Point3D(0.0, 0.0, 0.0)
         reflected_rays = patch.reflect_rays_no_bounds(rays)
-        point = _find_closest_point(reflected_rays)
-        focal_point += point
+        approximate_screen_normal = sum([normalize(ray.start - ray.end) for ray in reflected_rays]) / len(reflected_rays)
+        def calculate_spot_size(distance):
+            """
+            :returns: average distance from the central point for the plane at this distance
+            """
+            screen_plane = Plane(distance * approximate_screen_normal * -1.0 + shell_point, approximate_screen_normal)
+            points = []
+            for ray in reflected_rays:
+                points.append(screen_plane.intersect_line(ray.start, ray.end))
+            average_point = sum(points) / len(points)
+            errors = [numpy.linalg.norm(p - average_point) for p in points]
+            return sum(errors) / len(errors)
+        previous_distance = numpy.linalg.norm(patch.shell_point - patch.screen_point)
+        min_dist = previous_distance * 0.9
+        max_dist = previous_distance * 1.1
+        num_iterations = 20
+        tolerance = 0.0001
+        best_dist = scipy.optimize.fminbound(calculate_spot_size, min_dist, max_dist, maxfun=num_iterations, xtol=tolerance, full_output=False, disp=0)
+        focal_point += best_dist * approximate_screen_normal * -1.0 + shell_point
     return focal_point / len(patches)
-
-def _measure_error(poly, screen_point, rays):
-    """
-    Figures out where the poly reflects the rays, and returns the distance from there to the screen point
-    """
-    reflected_rays = poly.reflect_rays_no_bounds(rays)
-    distance = 0.0
-    for ray in reflected_rays:
-        distance += math.sqrt(distToLineSquared(screen_point, ray.start, ray.end))
-    return distance / len (rays)
     

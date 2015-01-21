@@ -206,7 +206,7 @@ class ArcPoly(object):
             if numpy.isreal(root):
                 root = numpy.real(root)
                 #TODO: might need to be reversed
-                blah
+                x = blah
                 if (slope < 0.0 and root > ray.start[0]) or (slope >= 0.0 and root < ray.start[0]):
                     if math.fabs(root) < math.fabs(best_root):
                         best_root = root
