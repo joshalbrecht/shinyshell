@@ -5,7 +5,7 @@ import numpy
 import scipy.integrate
 import scipy.optimize
 
-import matplotlib.pyplot as plt
+import matplotlib.pyplot
 
 from optics.base import * # pylint: disable=W0401,W0614
 import optics.debug
@@ -101,7 +101,7 @@ def new_grow_arc(
     
     if optics.debug.ARC_CREATION:
         #plot the original points and the resulting interpolated points
-        axes = plt.subplot(111, projection='3d')
+        axes = matplotlib.pyplot.subplot(111, projection='3d')
         axes.plot(points[:, 0], points[:, 1], points[:, 2], c='r', marker='x', label='original points')
         axes.plot(arc_points[:, 0], arc_points[:, 1], arc_points[:, 2], c='g', marker='o', label='arc points')
         axes.plot([ORIGIN[0]], [ORIGIN[1]], [ORIGIN[2]], c='b', marker='*', label='eye')
@@ -109,8 +109,8 @@ def new_grow_arc(
         axes.set_xlabel('X')
         axes.set_ylabel('Y')
         axes.set_zlabel('Z')
-        plt.legend()
-        plt.show()
+        matplotlib.pyplot.legend()
+        matplotlib.pyplot.show()
     
     return arc
 
@@ -137,13 +137,13 @@ def create_arc_poly(arc_plane, direction, shell_point, screen_point, points, pol
     if optics.debug.POLYARC_FITTING:
         projected_origin = arc_poly.plane_to_local(arc_plane.world_to_local(ORIGIN))
         projected_screen_point = arc_poly.plane_to_local(arc_plane.world_to_local(screen_point))
-        plt.plot(projected_points[:, 0], projected_points[:, 1], "r", label="arc points")
+        matplotlib.pyplot.plot(projected_points[:, 0], projected_points[:, 1], "r", label="arc points")
         x = numpy.linspace(arc_poly.min_x, arc_poly.max_x, 200)
-        plt.plot(x, poly(x), "g", label="polynomial")
-        plt.plot(projected_origin[0], projected_origin[1], "ro", label="eye")
-        plt.plot(projected_screen_point[0], projected_screen_point[1], "bo", label="screen point")
-        plt.legend()
-        plt.show()
+        matplotlib.pyplot.plot(x, poly(x), "g", label="polynomial")
+        matplotlib.pyplot.plot(projected_origin[0], projected_origin[1], "ro", label="eye")
+        matplotlib.pyplot.plot(projected_screen_point[0], projected_screen_point[1], "bo", label="screen point")
+        matplotlib.pyplot.legend()
+        matplotlib.pyplot.show()
     
     arc_poly._poly = poly
     arc_poly._derivative = poly.deriv(1)
@@ -213,16 +213,16 @@ class ArcPoly(object):
         
         if optics.debug.POLYARC_INTERSECTIONS:
             ray_list = numpy.array([ray.start, ray.end])
-            plt.plot(ray_list[:, 0], ray_list[:, 1], "r-", label="ray")
+            matplotlib.pyplot.plot(ray_list[:, 0], ray_list[:, 1], "r-", label="ray")
             x = numpy.linspace(self.min_x, self.max_x, 100)
-            plt.plot(x, self._poly(x), "b", label="poly")
-            plt.plot(x, numpy.polynomial.polynomial.Polynomial(self._poly.coef - line_poly)(x), "g", label="difference")
+            matplotlib.pyplot.plot(x, self._poly(x), "b", label="poly")
+            matplotlib.pyplot.plot(x, numpy.polynomial.polynomial.Polynomial(self._poly.coef - line_poly)(x), "g", label="difference")
             projected_origin = self.plane_to_local(self.arc_plane.world_to_local(Point3D(0.0, 0.0, 0.0)))
-            plt.plot(projected_origin[0], projected_origin[1], "ro", label="eye")
-            plt.plot(self.screen_point[0], self.screen_point[1], "bo", label="screen")
-            plt.legend()
+            matplotlib.pyplot.plot(projected_origin[0], projected_origin[1], "ro", label="eye")
+            matplotlib.pyplot.plot(self.screen_point[0], self.screen_point[1], "bo", label="screen")
+            matplotlib.pyplot.legend()
             print roots
-            plt.show()
+            matplotlib.pyplot.show()
         
         best_root = float("inf")
         for root in numpy.real_if_close(roots, tol=1000000):

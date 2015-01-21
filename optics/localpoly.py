@@ -45,6 +45,9 @@ class LocalTaylorPoly(object):
         self.poly = poly
         self.space = space
         
+    def get_z_for_plot(self, x, y):
+        return self.poly.eval_poly(x, y)
+        
     def reflect_rays(self, rays):
         """
         :returns: all of the rays, reflected off of this surface (or None if the ray did not hit the surface)

@@ -1,9 +1,11 @@
 
 import scipy.integrate
 import scipy.optimize
+import matplotlib.pyplot
 
 from optics.base import * # pylint: disable=W0401,W0614
 import optics.globals
+import optics.debug
 import optics.utils
 import optics.parallel
 import optics.scale
@@ -44,11 +46,13 @@ def create_patch(
         prev_mu_normal_function = prev_mu_patch.surface_normal_function()
     else:
         prev_mu_arc = optics.arc.new_grow_arc(shell_point, screen_point, rho_start_plane, mu_start_plane, mu_end_plane, previous_normal_function=None, falloff=-1.0, poly_order=poly_order)
+        prev_mu_normal_function = None
     if prev_rho_patch != None:
         prev_rho_arc = prev_rho_patch.get_edge_arc(True, rho_direction)
         prev_rho_normal_function = prev_rho_patch.surface_normal_function()
     else:
         prev_rho_arc = optics.arc.new_grow_arc(shell_point, screen_point, mu_start_plane, rho_start_plane, rho_end_plane, previous_normal_function=None, falloff=-1.0, poly_order=poly_order)
+        prev_rho_normal_function = None
 
     #create a grid of points for two conflicting sets of ribs
     vertical_grid = _make_grid(True, shell_point, screen_point, mu_start_plane, mu_end_plane, rho_start_plane, rho_end_plane, prev_mu_normal_function)
@@ -108,6 +112,22 @@ def create_patch(
         #save it for later so we don't have to recalculate
         polys[weight] = poly
         
+        if optics.debug.TAYLOR_SURFACE_CREATION:
+            #plot the original points and the resulting interpolated points
+            axes = matplotlib.pyplot.subplot(111, projection='3d')
+            base_points = numpy.vstack(projected_vertical_grid)
+            delta_points = numpy.vstack(projected_horizontal_grid)
+            axes.plot(base_points[:, 0], base_points[:, 1], base_points[:, 2], c='r', marker='o', label='base grid')
+            axes.plot(all_points[:, 0], all_points[:, 1], all_points[:, 2], c='g', marker='o', label='weighted grid')
+            x, y = all_points[:, 0], all_points[:, 1]
+            axes.plot_wireframe(x, y, poly.get_z_for_plot(x, y), 'g', label="surface")
+            axes.plot(delta_points[:, 0], delta_points[:, 1], delta_points[:, 2], c='b', marker='o', label='arc points')
+            axes.set_xlabel('X')
+            axes.set_ylabel('Y')
+            axes.set_zlabel('Z')
+            matplotlib.pyplot.legend()
+            matplotlib.pyplot.show()
+        
         #cast rays against the taylor poly to measure x and y error
         projected_x_error_rays = [Ray(grid[i][0] - projected_ray_normal, grid[i][0]) for i in range(0, len(grid))]
         projected_y_error_rays = [Ray(grid[0][i] - projected_ray_normal, grid[0][i]) for i in range(0, len(grid[0]))]
@@ -142,22 +162,22 @@ def _make_grid(arc_along_mu, shell_point, screen_point, mu_start_plane, mu_end_p
         start_plane = rho_start_plane
         end_plane = rho_end_plane
     #does not contain the start points (eg, starting arcs)
-    grid = numpy.zeros((num_slices, num_slices))
+    grid = numpy.zeros((num_slices, num_slices, 3))
     for i in range(0, len(arc_slice_angles)):
         angle = arc_slice_angles[i]
         if arc_along_mu:
             arc_plane = optics.arcplane.ArcPlane(rho=angle)
         else:
             arc_plane = optics.arcplane.ArcPlane(mu=angle)
-        arc = optics.arc.new_grow_arc(ORIGIN, shell_point, screen_point, arc_plane, start_plane, end_plane, previous_normal_function)
-        for j in range(1, len(arc)):
+        arc = optics.arc.new_grow_arc(shell_point, screen_point, arc_plane, start_plane, end_plane, previous_normal_function)
+        for j in range(1, len(arc.points)):
             if arc_along_mu:
                 mu = i
                 rho = j
             else:
                 mu = j
                 rho = i
-            grid[mu][rho] = arc[i]
+            grid[mu][rho] = arc.points[i]
     return grid
 
 def _measure_error(poly, screen_point, rays):
