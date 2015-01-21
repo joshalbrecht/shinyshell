@@ -101,15 +101,14 @@ def new_grow_arc(
     
     if optics.debug.ARC_CREATION:
         #plot the original points and the resulting interpolated points
-        fig = plt.figure()
-        plot = fig.add_subplot(111, projection='3d')
-        plot.scatter(points[:, 0], points[:, 1], points[:, 2], c='r', marker='x', label='original points')
-        plot.scatter(arc_points[:, 0], arc_points[:, 1], arc_points[:, 2], c='g', marker='o', label='arc points')
-        plot.scatter(ORIGIN[0], ORIGIN[1], ORIGIN[2], c='b', marker='*', label='eye')
-        plot.scatter(screen_point[0], screen_point[1], screen_point[2], c='r', marker='*', label='screen')
-        plot.set_xlabel('X')
-        plot.set_ylabel('Y')
-        plot.set_zlabel('Z')
+        axes = plt.subplot(111, projection='3d')
+        axes.plot(points[:, 0], points[:, 1], points[:, 2], c='r', marker='x', label='original points')
+        axes.plot(arc_points[:, 0], arc_points[:, 1], arc_points[:, 2], c='g', marker='o', label='arc points')
+        axes.plot([ORIGIN[0]], [ORIGIN[1]], [ORIGIN[2]], c='b', marker='*', label='eye')
+        axes.plot([screen_point[0]], [screen_point[1]], [screen_point[2]], c='r', marker='*', label='screen')
+        axes.set_xlabel('X')
+        axes.set_ylabel('Y')
+        axes.set_zlabel('Z')
         plt.legend()
         plt.show()
     
