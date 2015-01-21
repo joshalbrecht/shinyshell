@@ -8,17 +8,124 @@ import scipy.optimize
 import matplotlib.pyplot as plt
 
 from optics.base import * # pylint: disable=W0401,W0614
+import optics.debug
 import optics.globals
 import optics.utils
 import optics.parallel
 import optics.scale
 import optics.rotation_matrix
 
-def new_grow_arc(shell_point, screen_point, plane_containing_arc, ending_plane, previous_normal_function=None, falloff=-1.0, step_size=0.01):
+#TODO: use previous_normal_function and falloff
+def new_grow_arc(
+    shell_point,
+    screen_point,
+    plane_containing_arc,
+    ending_plane,
+    previous_normal_function=None,
+    falloff=-1.0,
+    step_size=0.01
+    ):
     """
+    Creates an arc through space within the given plane, ending at the end plane. The arc is
+    created by integrating through a vector field that is defined by the shell point and screen
+    point.
+    
+    :param shell_point: where this arc will begin
+    :type  shell_point: Point2D
+    :param screen_point: where this arc should focus light
+    :type  screen_point: Point2D
+    :param plane_containing_arc: the plane that will contain this arc. note that it is orthogonal to end_arc_plane.
+    :type  plane_containing_arc: ArcPlane
+    :param ending_plane: where this arc should terminate
+    :type  ending_plane: ArcPlane
+    :param previous_normal_function: maps from points in the previous patch space to surface normal.
+        Used for smoothing the transition between the two patches.
+    :type  previous_normal_function: function(Point3D) -> Point3D
+    :param falloff: over what proportion of the range should the correction for the previous screen point fall off.
+        Controls how flat the surface will be at the starting point. Higher numbers will make the surface flatter
+    :type  falloff: float
+    :param step_size: how accurately we should integrate through the vector field. is roughly in mm
+    :type  step_size: float
+    
+    :returns: the arc that best focuses light to that screen_point
+    :rtype: Arc
     """
+    
+    #create the arc with basic parameters. not fully initialized yet, but can at least use the transformation
+    direction = 1.0
+    if ending_plane.angle < 0.0:
+        direction = -1.0
+        
+    #TODO: I suppose all arcs should contain that logic about having points at the correct mu and rho intersections?
+    #otherwise the first one will be off and it will just be more confusing
+    arc = NewArc(plane_containing_arc, shell_point, screen_point, screen_normal, direction)
+    
+    end_plane_line_start = ORIGIN
+    end_plane_line_end = ending_plane.view_normal
+    
+    desired_light_direction = -1.0 * normalize(shell_point)
+    def vector_field_derivative(point, t):
+        """
+        Defines the derivative through the vector field.
+        """
+        point_to_screen_vec = normalize(screen_point - point)
+        surface_normal = normalize(point_to_screen_vec + desired_light_direction)
+        #TODO: define plane.normal
+        derivative = normalize(numpy.cross(surface_normal, plane_containing_arc.normal))
+        return derivative
+    
+    #TODO: this is a pretty arbitrary, pointlessly high max_t
+    #we can calulate the max_t much more precisely because arcs are mostly linear...
+    
+    #use the vector field to define the exact shape of the arc
+    max_t = 2.0 * optics.globals.LIGHT_RADIUS
+    t_values = numpy.arange(0.0, max_t, step_size)
+    points = scipy.integrate.odeint(vector_field_derivative, shell_point, t_values)
+    
+    #fit a 2D polynomial to the points
+    #TODO: put a ton of weight on 0,0, must pass through there
+    #TODO: possibly put less weight on points that are farther away?
+    #TODO: also, we don't really care that much about points that have gone farther than this poly really will..  should probably trim those
+    #which should be relatively easy, because it's going to be relatively flat and we know how far approximately we'll go
+    coefficients = numpy.polynomial.polynomial.polyfit(points[:, 0], points[:, 1], optics.globals.POLY_ORDER)
+    arc._poly = numpy.polynomial.polynomial.Polynomial(coefficients)
+    arc._derivative = arc._poly.deriv(1)
+    
+    #plt.plot(points[:,0], points[:, 1],"r")
+    #plt.plot(points[:,0], arc._poly(points[:, 0]),"b")
+    #plt.plot(projected_origin[0], projected_origin[1],"ro")
+    #plt.plot(projected_screen_point[0], projected_screen_point[1],"bo")
+    #plt.show()
+    
+    #intersect the poly and the projected_end_plane_vector to find the bounds for the arc
+    #find the first intersection that is positive and closest to 0
+    line_poly = _convert_line_to_poly_coefs(projected_end_plane_line_start, projected_end_plane_line_end)
+    roots = numpy.real(numpy.polynomial.polynomial.polyroots(coefficients - line_poly))
+    positive_roots = [r for r in roots if r > 0]
+    
+    #if ending_plane.mu > 0.5 and plane_containing_arc.rho > 0.14:
+    #if plane_containing_arc.rho > 0.14:
+    #if plane_containing_arc.rho != None:
+        #plt.plot(points[:,0], points[:, 1],"r")
+        #plt.plot(points[:,0], arc._poly(points[:, 0]),"b")
+        #plt.plot(points[:,0], numpy.polynomial.polynomial.Polynomial(line_poly)(points[:,0]), "g-")
+        #plt.plot(projected_origin[0], projected_origin[1],"ro")
+        #plt.plot(projected_screen_point[0], projected_screen_point[1],"bo")
+        #plt.show()
+    
+    if len(positive_roots) <= 0:
+        x_values = numpy.array([0.0, 80.0])
+        plt.plot(points[:,0], points[:, 1],"r")
+        plt.plot(x_values, b + m * x_values, 'b-')
+        plt.plot(projected_origin[0], projected_origin[1], "ro")
+        plt.plot(projected_screen_point[0], projected_screen_point[1], "bo")
+        plt.show()
+    
+    arc.max_x = min(positive_roots)
+    
     return arc
 
+#TODO: replace Arc() with this class completely, as soon as this new approach works...
 class NewArc(object):
     """
     """
