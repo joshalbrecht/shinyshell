@@ -30,7 +30,7 @@ class ArcPlane(object):
         if self.angle < 0.0:
             base_plane_normal *= -1
             
-        self.local_to_world_rotation_matrix = numpy.zeros((3,3))
+        self.local_to_world_rotation_matrix = numpy.zeros((3, 3))
         optics.rotation_matrix.R_axis_angle(self.local_to_world_rotation_matrix, self.rotation_axis, self.angle)
         self.world_to_local_rotation_matrix = numpy.linalg.inv(self.local_to_world_rotation_matrix)
         base_view_normal = Point3D(0.0, 0.0, -1.0)

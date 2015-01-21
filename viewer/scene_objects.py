@@ -104,6 +104,41 @@ class RenderableArc(SceneObject):
             if intersection != None:
                 self.rays.append(LightRay(transform(rays[i].start), transform(intersection)))
                 self.rays.append(LightRay(transform(intersection), transform(screen_points[i])))
+                
+class RenderablePatch(SceneObject):
+    
+    def __init__(self, patch, **kwargs):
+        SceneObject.__init__(self, pos=patch.shell_point, **kwargs)
+        self.patch = patch
+        self.points = [point for point in self.patch.grid]
+        self.rays = []
+        self._calculate_rays()
+        
+    def render(self):
+        SceneObject.render(self)
+        OpenGL.GL.glPointSize(5.0);
+        OpenGL.GL.glBegin(OpenGL.GL.GL_POINTS)
+        for point in self.points:
+            OpenGL.GL.glVertex3f(*point)
+        OpenGL.GL.glVertex3f(self.patch.screen_point)
+        OpenGL.GL.glEnd()
+        
+        OpenGL.GL.glBegin(OpenGL.GL.GL_LINES)
+        for ray in self.rays:
+            OpenGL.GL.glVertex3f(*ray.start)
+            OpenGL.GL.glVertex3f(*ray.end)
+        OpenGL.GL.glEnd()
+        
+    def _calculate_rays(self):
+        self.rays = []
+        #TODO: actually calculate rays again
+        #rays = optics.new_calculations._generate_rays(self.arc, self.arc.shell_point)
+        #intersections, screen_points = optics.new_calculations.cast_rays_on_to_screen(rays, [self.arc])
+        #for i in range(0, len(rays)):
+        #    intersection = intersections[i]
+        #    if intersection != None:
+        #        self.rays.append(LightRay(transform(rays[i].start), transform(intersection)))
+        #        self.rays.append(LightRay(transform(intersection), transform(screen_points[i])))
     
 class MovablePoint(SceneObject):
     def render(self):

@@ -29,6 +29,7 @@ pyximport.install()
 from optics.base import *
 import optics.calculations
 import optics.new_calculations
+import optics.even_newer_calculations
 import viewer.window
 
 NUM_PROCESSES = 4
@@ -43,7 +44,7 @@ def clear_temporary_data():
     """
     pass
 
-def generate_surface(shell_point, screen_point, screen_normal, principal_ray, on_done, on_new_scale):
+def generate_surface(shell_point, screen_point, screen_normal, principal_ray, on_done, on_new_patch):
     global master_thread, process_pool, stop_flag
     
     assert master_thread == None
@@ -55,11 +56,8 @@ def generate_surface(shell_point, screen_point, screen_normal, principal_ray, on
     process_pool = multiprocessing.Pool(NUM_PROCESSES)
     
     def calculate():
-        #scales = optics.calculations.create_surface_via_scales(shell_point, screen_point, screen_normal, principal_ray, process_pool, stop_flag, on_new_scale)
-        #on_done(scales)
-        #arcs = optics.new_calculations.create_rib_arcs(shell_point, screen_point, screen_normal, principal_ray, process_pool, stop_flag, on_new_scale)
-        arcs = optics.new_calculations.create_patch(shell_point, screen_point, screen_normal, principal_ray, process_pool, stop_flag, on_new_scale)
-        on_done(arcs)
+        patches = optics.even_newer_calculations.grow_surface(shell_point, screen_point, screen_normal, principal_ray, process_pool, stop_flag, on_new_patch)
+        on_done(patches)
     
     master_thread = threading.Thread(target=calculate)
     master_thread.start()
