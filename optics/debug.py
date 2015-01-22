@@ -20,3 +20,9 @@ RIB_CREATION = True
 
 #whether to debug the taylor polynomial creation process
 TAYLOR_SURFACE_CREATION = True
+
+#whether to debug ray intersections with taylor surfaces
+TAYLOR_SURFACE_REFLECTIONS = False
+
+#whether to debug the focal error calculation for Taylor poly surfaces
+TAYLOR_SURFACE_FOCAL_ERROR = True

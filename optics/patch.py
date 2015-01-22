@@ -148,7 +148,7 @@ def create_patch(
         x_error = _measure_error(poly, projected_screen_point, projected_x_error_rays)
         y_error = _measure_error(poly, projected_screen_point, projected_y_error_rays)
         error = max((x_error, y_error))
-        print("%s: %s" % (weight, error))
+        print("%s: %s (max of %s, %s)" % (weight, error, x_error, y_error))
         return error
     num_iterations = 20
     tolerance = 0.0001
@@ -212,10 +212,25 @@ def _measure_error(poly, screen_point, rays):
     """
     Figures out where the poly reflects the rays, and returns the distance from there to the screen point
     """
-    reflected_rays = poly.reflect_rays(rays)
+    reflected_rays = poly._local_reflect_rays(rays)
     distance = 0.0
     for ray in reflected_rays:
         distance += math.sqrt(distToLineSquared(screen_point, ray.start, ray.end))
+    if optics.debug.TAYLOR_SURFACE_FOCAL_ERROR:
+        axes = matplotlib.pyplot.subplot(111, projection='3d')
+        size = 5
+        num_points = 10
+        x, y = numpy.meshgrid(numpy.linspace(-size, size, num_points), numpy.linspace(-size, size, num_points))
+        axes.scatter(x, y, poly.get_z_for_plot(x, y), c='r', marker='o').set_label('patch')
+        for ray in reflected_rays:
+            debug_dist = math.sqrt(distToLineSquared(screen_point, ray.start, ray.end))
+            scaled_ray = Ray(ray.start, debug_dist * normalize(ray.end-ray.start) + ray.start)
+            axes.plot([scaled_ray.start[0], scaled_ray.end[0]], [scaled_ray.start[1], scaled_ray.end[1]], [scaled_ray.start[2], scaled_ray.end[2]], label="ray")
+        axes.set_xlabel('X')
+        axes.set_ylabel('Y')
+        axes.set_zlabel('Z')
+        matplotlib.pyplot.legend()
+        matplotlib.pyplot.show()
     return distance / len (rays)
 
 class Patch(object):
@@ -273,7 +288,7 @@ class Patch(object):
         This is to prevent weirdness at the edges, but you should be careful to ignore reflections that are outside of the patch space
         """
         projected_rays = [Ray(self.poly_space.point_to_space(ray.start), self.poly_space.point_to_space(ray.end)) for ray in rays]
-        reflected_rays = self.poly.reflect_rays(projected_rays)
+        reflected_rays = self.poly._local_reflect_rays(projected_rays)
         return [Ray(self.poly_space.point_from_space(ray.start), self.poly_space.point_from_space(ray.end)) for ray in reflected_rays]
     
     def surface_normal_function(self):

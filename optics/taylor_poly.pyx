@@ -251,6 +251,7 @@ cdef class TaylorPoly(object):
         
         #quick initial filter--does this even pass through our bounding sphere?
         if distToLineSquared(Point3D(0.0, 0.0, 0.0), start, start+direction) > self.bounding_radius_sq:
+            print("Outside of domain: %s going in %s.  %s vs %s" % (start, direction, distToLineSquared(Point3D(0.0, 0.0, 0.0), start, start+direction), self.bounding_radius_sq))
             return None
 
         ## Polynomial parametric equations describing the beam
