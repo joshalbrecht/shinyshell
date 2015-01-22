@@ -69,15 +69,15 @@ class LocalTaylorPoly(object):
                 midpoint = closestPointOnLine(reverse_ray_direction, Point3D(0.0, 0.0, 0.0), normal)
                 reflection_direction = (2.0 * (midpoint - reverse_ray_direction)) + reverse_ray_direction
                 reflection = intersection + reflection_direction
-                reflected_rays.append(Ray(self.space.point_from_space(intersection), self.space.point_from_space(reflection)))
+                reflected_rays.append(Ray(intersection, reflection))
             if optics.debug.TAYLOR_SURFACE_REFLECTIONS:
+                #TODO: graph the rays and reflection and normal if they exist
                 axes = matplotlib.pyplot.subplot(111, projection='3d')
                 size = 5
                 num_points = 10
                 x, y = numpy.meshgrid(numpy.linspace(-size, size, num_points), numpy.linspace(-size, size, num_points))
                 axes.scatter(x, y, self.get_z_for_plot(x, y), c='r', marker='o').set_label('grid')
                 axes.plot([ray.start[0], ray.end[0]], [ray.start[1], ray.end[1]], [ray.start[2], ray.end[2]], label="ray")
-                #TODO: graph the rays and reflection and normal if they exist
                 axes.set_xlabel('X')
                 axes.set_ylabel('Y')
                 axes.set_zlabel('Z')

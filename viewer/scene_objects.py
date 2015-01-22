@@ -110,7 +110,7 @@ class RenderablePatch(SceneObject):
     def __init__(self, patch, **kwargs):
         SceneObject.__init__(self, pos=patch.shell_point, **kwargs)
         self.patch = patch
-        self.points = [point for point in self.patch.grid]
+        self.points = numpy.vstack(self.patch.grid)
         self.rays = []
         self._calculate_rays()
         
@@ -120,7 +120,7 @@ class RenderablePatch(SceneObject):
         OpenGL.GL.glBegin(OpenGL.GL.GL_POINTS)
         for point in self.points:
             OpenGL.GL.glVertex3f(*point)
-        OpenGL.GL.glVertex3f(self.patch.screen_point)
+        OpenGL.GL.glVertex3f(*self.patch.screen_point)
         OpenGL.GL.glEnd()
         
         OpenGL.GL.glBegin(OpenGL.GL.GL_LINES)

@@ -134,7 +134,7 @@ def create_patch(
             x, y = all_points[:, 0], all_points[:, 1]
             wireframe = axes.plot_wireframe(x, y, poly.get_z_for_plot(x, y))
             wireframe.set_label("surface")
-            wireframe.color("g")
+            wireframe.set_color("g")
             axes.scatter(delta_points[:, 0], delta_points[:, 1], delta_points[:, 2], c='b', marker='o').set_label('delta points')
             axes.set_xlabel('X')
             axes.set_ylabel('Y')
@@ -156,10 +156,10 @@ def create_patch(
     
     #finish initializing the patch
     grid = vertical_grid + best_weight * (horizontal_grid - vertical_grid)
-    partial_grid = numpy.hstack((grid, prev_rho_arc_points))
-    full_grid = numpy.vstack((partial_grid, prev_mu_arc_points))
-    #TODO: unsure if that is right...
-    x = blah
+    full_grid = numpy.zeros((len(grid)+1, len(grid)+1, 3))
+    full_grid[1:,1:] = grid
+    full_grid[:,0] = prev_rho_arc_points
+    full_grid[0,1:] = prev_mu_arc_points
     patch = Patch(shell_point, screen_point, grid, polys[best_weight], space, rho_start_plane, rho_end_plane, mu_start_plane, mu_end_plane)
     
     return patch
@@ -217,20 +217,24 @@ def _measure_error(poly, screen_point, rays):
     for ray in reflected_rays:
         distance += math.sqrt(distToLineSquared(screen_point, ray.start, ray.end))
     if optics.debug.TAYLOR_SURFACE_FOCAL_ERROR:
+        #TODO: screen is really hard to find.
         axes = matplotlib.pyplot.subplot(111, projection='3d')
         size = 5
         num_points = 10
         x, y = numpy.meshgrid(numpy.linspace(-size, size, num_points), numpy.linspace(-size, size, num_points))
         axes.scatter(x, y, poly.get_z_for_plot(x, y), c='r', marker='o').set_label('patch')
         for ray in reflected_rays:
-            debug_dist = math.sqrt(distToLineSquared(screen_point, ray.start, ray.end))
+            debug_dist = numpy.linalg.norm(screen_point - ray.start)
             scaled_ray = Ray(ray.start, debug_dist * normalize(ray.end-ray.start) + ray.start)
             axes.plot([scaled_ray.start[0], scaled_ray.end[0]], [scaled_ray.start[1], scaled_ray.end[1]], [scaled_ray.start[2], scaled_ray.end[2]], label="ray")
+        axes.plot([screen_point[0]], [screen_point[1]], [screen_point[2]], label="screen")
         axes.set_xlabel('X')
         axes.set_ylabel('Y')
         axes.set_zlabel('Z')
         matplotlib.pyplot.legend()
         matplotlib.pyplot.show()
+    #TODO: make a spot diagram as well so I can see distortion
+        
     return distance / len (rays)
 
 class Patch(object):
@@ -289,7 +293,13 @@ class Patch(object):
         """
         projected_rays = [Ray(self.poly_space.point_to_space(ray.start), self.poly_space.point_to_space(ray.end)) for ray in rays]
         reflected_rays = self.poly._local_reflect_rays(projected_rays)
-        return [Ray(self.poly_space.point_from_space(ray.start), self.poly_space.point_from_space(ray.end)) for ray in reflected_rays]
+        result = []
+        for ray in reflected_rays:
+            if ray != None:
+                result.append(Ray(self.poly_space.point_from_space(ray.start), self.poly_space.point_from_space(ray.end)))
+            else:
+                result.append(None)
+        return result
     
     def surface_normal_function(self):
         """

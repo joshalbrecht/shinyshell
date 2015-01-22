@@ -191,8 +191,10 @@ def get_focal_point(patches, shell_point, num_rays=5):
         #can average the normal of the reflected rays to get approximately where the screen goes
         #then iteratively try different distances until we've minimized the spot size there
         focal_point = Point3D(0.0, 0.0, 0.0)
-        reflected_rays = patch.reflect_rays_no_bounds(rays)
+        reflected_rays = [ray for ray in patch.reflect_rays_no_bounds(rays) if ray != None]
         approximate_screen_normal = sum([normalize(ray.start - ray.end) for ray in reflected_rays]) / len(reflected_rays)
+        if optics.debug.PATCH_FOCAL_REFLECTIONS:
+            blah
         def calculate_spot_size(distance):
             """
             :returns: average distance from the central point for the plane at this distance
@@ -203,6 +205,11 @@ def get_focal_point(patches, shell_point, num_rays=5):
                 points.append(screen_plane.intersect_line(ray.start, ray.end))
             average_point = sum(points) / len(points)
             errors = [numpy.linalg.norm(p - average_point) for p in points]
+            if optics.debug.PATCH_FOCAL_SPOT_SIZE:
+                #use coordinate space to move everything to the xy plane
+                #keep a fixed scale to x and y so that each graph can be compared with the previous
+                #should probably print the errors as well
+                blah
             return sum(errors) / len(errors)
         previous_distance = numpy.linalg.norm(patch.shell_point - patch.screen_point)
         min_dist = previous_distance * 0.9
