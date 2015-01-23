@@ -172,7 +172,7 @@ def get_shell_point(patches, mu, rho):
         point += patch.get_corner(mu, rho)
     return point / len(patches)
 
-def get_focal_point(patches, shell_point, num_rays=5):
+def get_focal_point(patches, shell_point, num_rays=20):
     """
     Figures out where the patches focus light that is directed at this shell point
     """
@@ -180,6 +180,10 @@ def get_focal_point(patches, shell_point, num_rays=5):
     for patch in patches:
         #create a bunch of parallel rays coming from the eye
         ray_vector = normalize(shell_point)
+        
+        ##TODO: remove me
+        #ray_vector = normalize(patch.shell_point)
+        
         ray_rotation = numpy.zeros((3, 3))
         optics.rotation_matrix.R_2vect(ray_rotation, PRINCIPAL_RAY, ray_vector)
         rays = []
@@ -229,7 +233,7 @@ def get_focal_point(patches, shell_point, num_rays=5):
                 #use coordinate space to move everything to the xy plane
                 space = CoordinateSpace(screen_plane._point, screen_plane._normal)
                 transformed_points = numpy.array([space.point_to_space(p) for p in points])
-                matplotlib.pyplot.plot(transformed_points[:, 0], transformed_points[:, 1], "r", label="rays at %s" % (distance))
+                matplotlib.pyplot.plot(transformed_points[:, 0], transformed_points[:, 1], "r", linestyle='None', marker='o', label="rays at %s" % (distance))
                 matplotlib.pyplot.legend()
                 matplotlib.pyplot.show()
                 #keep a fixed scale to x and y so that each graph can be compared with the previous

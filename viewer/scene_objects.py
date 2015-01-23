@@ -131,14 +131,25 @@ class RenderablePatch(SceneObject):
         
     def _calculate_rays(self):
         self.rays = []
-        #TODO: actually calculate rays again
-        #rays = optics.new_calculations._generate_rays(self.arc, self.arc.shell_point)
-        #intersections, screen_points = optics.new_calculations.cast_rays_on_to_screen(rays, [self.arc])
+        
+        #LIGHT_RADIUS = 3.0
+        #num_rays = 5
+        #
+        ##create a bunch of parallel rays coming from the eye
+        #ray_vector = normalize(self.patch.grid[-1][-1])
+        #ray_rotation = numpy.zeros((3, 3))
+        #optics.rotation_matrix.R_2vect(ray_rotation, PRINCIPAL_RAY, ray_vector)
+        #rays = []
+        #for x in numpy.linspace(-LIGHT_RADIUS, LIGHT_RADIUS, num_rays*2+1):
+        #    for y in numpy.linspace(-LIGHT_RADIUS, LIGHT_RADIUS, num_rays*2+1):
+        #        start_point = ray_rotation.dot(Point3D(x, y, 0.0))
+        #        rays.append(Ray(start_point, start_point + ray_vector))
+        #reflected_rays = self.patch.reflect_rays_no_bounds(rays)
         #for i in range(0, len(rays)):
-        #    intersection = intersections[i]
-        #    if intersection != None:
-        #        self.rays.append(LightRay(transform(rays[i].start), transform(intersection)))
-        #        self.rays.append(LightRay(transform(intersection), transform(screen_points[i])))
+        #    reflected_ray = reflected_rays[i]
+        #    if reflected_ray != None:
+        #        self.rays.append(LightRay(rays[i].start, reflected_ray.start))
+        #        self.rays.append(LightRay(reflected_ray.start, 200.0 * (reflected_ray.end-reflected_ray.start) + reflected_ray.start))
     
 class MovablePoint(SceneObject):
     def render(self):
