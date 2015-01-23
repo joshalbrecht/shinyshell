@@ -28,7 +28,7 @@ TAYLOR_SURFACE_REFLECTIONS = False
 TAYLOR_SURFACE_FOCAL_ERROR = False
 
 #whether to debug the reflections for determining the next screen point from a patch
-PATCH_FOCAL_REFLECTIONS = True
+PATCH_FOCAL_REFLECTIONS = False
 
 #whether to debug the focal size of the reflected rays when determining the next screen point from a patch
 PATCH_FOCAL_SPOT_SIZE = True

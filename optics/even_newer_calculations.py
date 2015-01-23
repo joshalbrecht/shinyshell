@@ -7,6 +7,7 @@ Goal is to be able to delete calculations.py and new_calculations.py when finish
 import math
 
 import scipy.optimize
+import matplotlib.pyplot
 
 from optics.base import * # pylint: disable=W0401,W0614
 import optics.globals
@@ -194,7 +195,26 @@ def get_focal_point(patches, shell_point, num_rays=5):
         reflected_rays = [ray for ray in patch.reflect_rays_no_bounds(rays) if ray != None]
         approximate_screen_normal = sum([normalize(ray.start - ray.end) for ray in reflected_rays]) / len(reflected_rays)
         if optics.debug.PATCH_FOCAL_REFLECTIONS:
-            blah
+            #TODO: all rays don't come from the origin. draw all rays from their actual start points, and draw non-reflected rays going past the surface
+            #also, only draw the part of the surface that is real and should be reflected from
+            axes = matplotlib.pyplot.subplot(111, projection='3d')
+            size = 5
+            num_points = 10
+            x, y = numpy.meshgrid(numpy.linspace(-size, size, num_points), numpy.linspace(-size, size, num_points))
+            axes.scatter(x, y, patch.poly.get_z_for_plot(x, y), c='r', marker='o').set_label('patch')
+            for ray in reflected_rays:
+                debug_dist = 2*numpy.linalg.norm(ORIGIN - ray.start)
+                rays_to_draw = numpy.array([
+                    patch.poly_space.point_to_space(ORIGIN),
+                    patch.poly_space.point_to_space(ray.start),
+                    patch.poly_space.point_to_space(debug_dist * normalize(ray.end-ray.start) + ray.start)
+                ])
+                axes.plot(rays_to_draw[:, 0], rays_to_draw[:, 1], rays_to_draw[:, 2], label="ray")
+            axes.set_xlabel('X')
+            axes.set_ylabel('Y')
+            axes.set_zlabel('Z')
+            matplotlib.pyplot.legend()
+            matplotlib.pyplot.show()
         def calculate_spot_size(distance):
             """
             :returns: average distance from the central point for the plane at this distance
@@ -207,9 +227,15 @@ def get_focal_point(patches, shell_point, num_rays=5):
             errors = [numpy.linalg.norm(p - average_point) for p in points]
             if optics.debug.PATCH_FOCAL_SPOT_SIZE:
                 #use coordinate space to move everything to the xy plane
+                space = CoordinateSpace(screen_plane._point, screen_plane._normal)
+                transformed_points = numpy.array([space.point_to_space(p) for p in points])
+                matplotlib.pyplot.plot(transformed_points[:, 0], transformed_points[:, 1], "r", label="rays at %s" % (distance))
+                matplotlib.pyplot.legend()
+                matplotlib.pyplot.show()
                 #keep a fixed scale to x and y so that each graph can be compared with the previous
                 #should probably print the errors as well
-                blah
+                print errors
+                print sum(errors) / len(errors)
             return sum(errors) / len(errors)
         previous_distance = numpy.linalg.norm(patch.shell_point - patch.screen_point)
         min_dist = previous_distance * 0.9

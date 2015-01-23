@@ -150,7 +150,7 @@ def create_patch(
         error = max((x_error, y_error))
         print("%s: %s (max of %s, %s)" % (weight, error, x_error, y_error))
         return error
-    num_iterations = 20
+    num_iterations = 4#20
     tolerance = 0.0001
     best_weight = scipy.optimize.fminbound(error_for_weighting, 0.0, 1.0, maxfun=num_iterations, xtol=tolerance, full_output=False, disp=0)
     

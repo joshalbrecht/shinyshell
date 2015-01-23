@@ -136,10 +136,10 @@ class Window(pyglet.window.Window):
         side_normal = numpy.cross(view_normal, self.up_vector)
         y_matrix = numpy.zeros((3,3))
         y_angle = dy * angle_step
-        rotation_matrix.R_axis_angle(y_matrix, side_normal, y_angle)
+        optics.rotation_matrix.R_axis_angle(y_matrix, side_normal, y_angle)
         x_matrix = numpy.zeros((3,3))
         x_angle = -dx * angle_step
-        rotation_matrix.R_axis_angle(x_matrix, self.up_vector, x_angle)
+        optics.rotation_matrix.R_axis_angle(x_matrix, self.up_vector, x_angle)
         matrix = x_matrix.dot(y_matrix)
         
         #translate up point and camera point to remove the focal_point offset, rotate them, then translate back
