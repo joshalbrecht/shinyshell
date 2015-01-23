@@ -53,7 +53,18 @@ def create_patch(
     else:
         prev_rho_arc = optics.arc.new_grow_arc(shell_point, screen_point, mu_start_plane, rho_start_plane, rho_end_plane, previous_normal_function=None, falloff=-1.0, poly_order=poly_order)
         prev_rho_normal_function = None
-
+        
+    understand_arcs(shell_point,
+        screen_point,
+        mu_start_plane,
+        mu_end_plane,
+        rho_start_plane,
+        rho_end_plane,
+        prev_mu_arc,
+        prev_rho_arc,
+        poly_order
+        )
+        
     #create a grid of points for two conflicting sets of ribs
     vertical_grid = _make_grid(True, prev_rho_arc, shell_point, screen_point, mu_start_plane, mu_end_plane, rho_start_plane, rho_end_plane, prev_mu_normal_function)
     horizontal_grid = _make_grid(False, prev_mu_arc, shell_point, screen_point, mu_start_plane, mu_end_plane, rho_start_plane, rho_end_plane, prev_rho_normal_function)
@@ -317,3 +328,100 @@ class Patch(object):
             return surface_normal
         return surface_normal
     
+def understand_arcs(
+        shell_point,
+        screen_point,
+        mu_start_plane,
+        mu_end_plane,
+        rho_start_plane,
+        rho_end_plane,
+        prev_mu_arc,
+        prev_rho_arc,
+        poly_order
+        ):
+    #decide where existing arcs focus
+    mu_end_focal_point = calculate_next_focal_point_from_arc(prev_mu_arc, screen_point)
+    rho_end_focal_point = calculate_next_focal_point_from_arc(prev_rho_arc, screen_point)
+    
+    #grow new arcs
+    next_mu_arc = optics.arc.new_grow_arc(prev_rho_arc.points[-1], rho_end_focal_point, rho_end_plane, mu_start_plane, mu_end_plane, previous_normal_function=None, falloff=-1.0, poly_order=poly_order)
+    next_rho_arc = optics.arc.new_grow_arc(prev_mu_arc.points[-1], mu_end_focal_point, mu_end_plane, rho_start_plane, rho_end_plane, previous_normal_function=None, falloff=-1.0, poly_order=poly_order)
+    
+    #plot them all
+    print("%s (%s -> %s)" % (numpy.linalg.norm(next_mu_arc.points[-1] - next_rho_arc.points[-1]), next_rho_arc.points[-1], next_mu_arc.points[-1]))
+    axes = matplotlib.pyplot.subplot(111, projection='3d')
+    axes.scatter(prev_mu_arc.points[:, 0], prev_mu_arc.points[:, 1], prev_mu_arc.points[:, 2], c='darkred', marker='o').set_label('grid')
+    axes.scatter(prev_rho_arc.points[:, 0], prev_rho_arc.points[:, 1], prev_rho_arc.points[:, 2], c='darkblue', marker='o').set_label('grid')
+    axes.scatter(next_mu_arc.points[:, 0], next_mu_arc.points[:, 1], next_mu_arc.points[:, 2], c='red', marker='o').set_label('grid')
+    axes.scatter(next_rho_arc.points[:, 0], next_rho_arc.points[:, 1], next_rho_arc.points[:, 2], c='blue', marker='o').set_label('grid')
+    axes.set_xlabel('X')
+    axes.set_ylabel('Y')
+    axes.set_zlabel('Z')
+    matplotlib.pyplot.legend()
+    matplotlib.pyplot.show()
+    
+    #decide where the new arcs focus
+    calculate_next_focal_point_from_arc(blah)
+    calculate_next_focal_point_from_arc(blah)
+    
+    #see how far off those points are
+    #if it's reasonable, make a taylor surface and check its focus
+    
+#TODO: this is all copy-pasted from somewhere. refactor if we actually use this code.
+def calculate_next_focal_point_from_arc(arc, screen_point):
+    
+    LIGHT_RADIUS = 3.0
+    num_rays = 10
+    
+    #create a bunch of parallel rays coming from the eye going towards the end of the arc
+    ray_vector = normalize(arc.points[-1])
+    
+    #figure out where reflections off of each arc point would go
+    desired_light_direction = -1.0 * normalize(arc.points[0])
+    def get_surface_normal(point):
+        """
+        Defines the surface normal at each point.
+        """
+        point_to_screen_vec = normalize(screen_point - point)
+        surface_normal = normalize(point_to_screen_vec + desired_light_direction)
+        return surface_normal
+    reflected_rays = []
+    for arc_point in arc.points:
+        normal = get_surface_normal(arc_point)
+        reverse_ray_direction = -1.0 * normalize(arc.points[-1])
+        midpoint = closestPointOnLine(reverse_ray_direction, Point3D(0.0, 0.0, 0.0), normal)
+        reflection_direction = (2.0 * (midpoint - reverse_ray_direction)) + reverse_ray_direction
+        reflection = arc_point + reflection_direction
+        reflected_rays.append(Ray(arc_point, reflection))
+    
+    approximate_screen_normal = sum([normalize(ray.start - ray.end) for ray in reflected_rays]) / len(reflected_rays)
+    def calculate_spot_size(distance):
+        """
+        :returns: average distance from the central point for the plane at this distance
+        """
+        screen_plane = Plane(distance * approximate_screen_normal * -1.0 + arc.points[-1], approximate_screen_normal)
+        points = []
+        for ray in reflected_rays:
+            points.append(screen_plane.intersect_line(ray.start, ray.end))
+        average_point = sum(points) / len(points)
+        errors = [numpy.linalg.norm(p - average_point) for p in points]
+        if False:
+            #use coordinate space to move everything to the xy plane
+            space = CoordinateSpace(screen_plane._point, screen_plane._normal)
+            transformed_points = numpy.array([space.point_to_space(p) for p in points])
+            matplotlib.pyplot.plot(transformed_points[:, 0], transformed_points[:, 1], "r", linestyle='None', marker='o', label="rays at %s" % (distance))
+            matplotlib.pyplot.legend()
+            matplotlib.pyplot.show()
+            #keep a fixed scale to x and y so that each graph can be compared with the previous
+            #should probably print the errors as well
+            print errors
+            print sum(errors) / len(errors)
+        return sum(errors) / len(errors)
+    previous_distance = numpy.linalg.norm(arc.points[0] - screen_point)
+    min_dist = previous_distance * 0.9
+    max_dist = previous_distance * 1.1
+    num_iterations = 20
+    tolerance = 0.0001
+    best_dist = scipy.optimize.fminbound(calculate_spot_size, min_dist, max_dist, maxfun=num_iterations, xtol=tolerance, full_output=False, disp=0)
+    focal_point = best_dist * approximate_screen_normal * -1.0 + arc.points[-1]
+    return focal_point
