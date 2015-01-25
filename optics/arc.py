@@ -25,7 +25,8 @@ def new_grow_arc(
     previous_normal_function=None,
     falloff=-1.0,
     step_size=0.01,
-    poly_order=None
+    poly_order=None,
+    surface_normal_function=None
     ):
     """
     Creates an arc through space within the given plane, ending at the end plane. The arc is
@@ -67,7 +68,10 @@ def new_grow_arc(
         Defines the derivative through the vector field.
         """
         point_to_screen_vec = normalize(screen_point - point)
-        surface_normal = normalize(point_to_screen_vec + desired_light_direction)
+        if surface_normal_function == None:
+            surface_normal = normalize(point_to_screen_vec + desired_light_direction)
+        else:
+            surface_normal = surface_normal_function(point, t)
         derivative = normalize(numpy.cross(surface_normal, arc_plane.normal))
         return derivative
     #note: since arcs are mostly linear, we calculate the max_t value based on how far we're travelling, roughly
