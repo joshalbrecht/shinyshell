@@ -31,15 +31,15 @@ def create_patch(
     
     poly_order = optics.globals.POLY_ORDER
     
-    new_horizontal_arcing(
-        shell_point,
-        screen_point,
-        mu_start_plane,
-        mu_end_plane,
-        rho_start_plane,
-        rho_end_plane,
-        poly_order
-        )
+    #new_horizontal_arcing(
+    #    shell_point,
+    #    screen_point,
+    #    mu_start_plane,
+    #    mu_end_plane,
+    #    rho_start_plane,
+    #    rho_end_plane,
+    #    poly_order
+    #    )
     
     #figure out which direction we are growing (in the mu rho directions)
     mu_direction = FORWARD
@@ -352,40 +352,42 @@ def understand_arcs(
     #decide where existing arcs focus
     mu_end_focal_point = calculate_next_focal_point_from_arc(prev_mu_arc, screen_point)
     
-    #debug: let's see what happens if we re-create the arc and consider the focus for this new point
-    #hhmmm...  didn't work but I don't really understand why
-    #let's try walking halfway, then halfway
-    
-    first_half_mu_end_plane = optics.arcplane.ArcPlane(mu=mu_end_plane.mu/2.0)
-    first_half = optics.arc.new_grow_arc(shell_point, screen_point, rho_start_plane, mu_start_plane, first_half_mu_end_plane, previous_normal_function=None, falloff=-1.0, poly_order=poly_order)
-    first_half_focal_point = calculate_next_focal_point_from_arc(first_half, screen_point)
-    second_half = optics.arc.new_grow_arc(first_half.points[0], first_half_focal_point, rho_start_plane, first_half_mu_end_plane, mu_end_plane, previous_normal_function=None, falloff=-1.0, poly_order=poly_order)
-    points = list(first_half.points)
-    points.pop()
-    first_half.points = numpy.array(points + list(second_half.points))
-    
-    mu_end_focal_point = calculate_next_focal_point_from_arc(first_half, screen_point, draw=True)
-    
-    #def original_surface_normal_function(point, t=None):
-    #    point_to_screen_vec = normalize(screen_point - point)
-    #    surface_normal = normalize(point_to_screen_vec - normalize(shell_point))
-    #    return surface_normal
-    #outer_shell_point = prev_mu_arc.points[-1]
-    #def outer_point_surface_normal_function(point, t=None):
-    #    point_to_screen_vec = normalize(mu_end_focal_point - point)
-    #    surface_normal = normalize(point_to_screen_vec - normalize(outer_shell_point))
-    #    return surface_normal
-    #def surface_normal_function(point, t=None):
-    #    dist_to_start = numpy.linalg.norm(point - shell_point)
-    #    dist_to_end = numpy.linalg.norm(point - outer_shell_point)
-    #    total_dist = dist_to_start + dist_to_end
-    #    orig = original_surface_normal_function(point)
-    #    new = outer_point_surface_normal_function(point)
-    #    return normalize((dist_to_end / total_dist) * orig + (dist_to_start / total_dist) * new)
+    ##debug: let's see what happens if we re-create the arc and consider the focus for this new point
+    ##hhmmm...  didn't work but I don't really understand why
+    ##let's try walking halfway, then halfway
     #
-    #prev_mu_arc = optics.arc.new_grow_arc(shell_point, screen_point, rho_start_plane, mu_start_plane, mu_end_plane, previous_normal_function=None, falloff=-1.0, poly_order=poly_order, surface_normal_function=surface_normal_function)
-    #mu_end_focal_point = calculate_next_focal_point_from_arc(prev_mu_arc, screen_point, surface_normal_function, draw=True)
-    check_performance(prev_mu_arc, surface_normal_function)
+    #first_half_mu_end_plane = optics.arcplane.ArcPlane(mu=mu_end_plane.mu/2.0)
+    #first_half = optics.arc.new_grow_arc(shell_point, screen_point, rho_start_plane, mu_start_plane, first_half_mu_end_plane, previous_normal_function=None, falloff=-1.0, poly_order=poly_order)
+    #first_half_focal_point = calculate_next_focal_point_from_arc(first_half, screen_point)
+    #second_half = optics.arc.new_grow_arc(first_half.points[0], first_half_focal_point, rho_start_plane, first_half_mu_end_plane, mu_end_plane, previous_normal_function=None, falloff=-1.0, poly_order=poly_order)
+    #points = list(first_half.points)
+    #points.pop()
+    #first_half.points = numpy.array(points + list(second_half.points))
+    #
+    #mu_end_focal_point = calculate_next_focal_point_from_arc(first_half, screen_point, draw=True)
+    
+    def original_surface_normal_function(point, t=None):
+        point_to_screen_vec = normalize(screen_point - point)
+        surface_normal = normalize(point_to_screen_vec - normalize(shell_point))
+        return surface_normal
+    outer_shell_point = prev_mu_arc.points[-1]
+    def outer_point_surface_normal_function(point, t=None):
+        point_to_screen_vec = normalize(mu_end_focal_point - point)
+        surface_normal = normalize(point_to_screen_vec - normalize(outer_shell_point))
+        return surface_normal
+    def surface_normal_function(point, t=None):
+        dist_to_start = numpy.linalg.norm(point - shell_point)
+        dist_to_end = numpy.linalg.norm(point - outer_shell_point)
+        total_dist = dist_to_start + dist_to_end
+        orig = original_surface_normal_function(point)
+        new = outer_point_surface_normal_function(point)
+        return normalize((dist_to_end / total_dist) * orig + (dist_to_start / total_dist) * new)
+    
+    prev_mu_arc = optics.arc.new_grow_arc(shell_point, screen_point, rho_start_plane, mu_start_plane, mu_end_plane, previous_normal_function=None, falloff=-1.0, poly_order=poly_order, surface_normal_function=surface_normal_function)
+    mu_end_focal_point = calculate_next_focal_point_from_arc(prev_mu_arc, screen_point, surface_normal_function, draw=False)
+    #check_performance(prev_mu_arc, surface_normal_function)
+    print measure_performance(reflect_rays_from_points(prev_mu_arc.points, normalize(prev_mu_arc.points[0]), surface_normal_function), screen_point)
+    print measure_performance(reflect_rays_from_points(prev_mu_arc.points, normalize(prev_mu_arc.points[4]), surface_normal_function), calculate_focal_point_from_points(prev_mu_arc.points, normalize(prev_mu_arc.points[4]), surface_normal_function, numpy.linalg.norm(shell_point - screen_point), prev_mu_arc.points[4]))
     #end debug
     
     rho_end_focal_point = calculate_next_focal_point_from_arc(prev_rho_arc, screen_point)
@@ -420,10 +422,8 @@ def calculate_next_focal_point_from_arc(arc, screen_point, surface_normal_functi
     LIGHT_RADIUS = 3.0
     num_rays = 10
     
-    #TODO: put me back
     #create a bunch of parallel rays coming from the eye going towards the end of the arc
     ray_vector = normalize(arc.points[-1])
-    #ray_vector = normalize(arc.points[0])
     
     #figure out where reflections off of each arc point would go
     desired_light_direction = -1.0 * normalize(arc.points[0])
@@ -446,6 +446,7 @@ def calculate_next_focal_point_from_arc(arc, screen_point, surface_normal_functi
         reflected_rays.append(Ray(arc_point, reflection))
     
     approximate_screen_normal = sum([normalize(ray.start - ray.end) for ray in reflected_rays]) / len(reflected_rays)
+    focal_points = {}
     def calculate_spot_size(distance):
         """
         :returns: average distance from the central point for the plane at this distance
@@ -455,10 +456,9 @@ def calculate_next_focal_point_from_arc(arc, screen_point, surface_normal_functi
         for ray in reflected_rays:
             points.append(screen_plane.intersect_line(ray.start, ray.end))
         average_point = sum(points) / len(points)
+        focal_points[distance] = average_point
         errors = [numpy.linalg.norm(p - average_point) for p in points]
         if draw:
-            #keep a fixed scale to x and y so that each graph can be compared with the previous
-            #should probably print the errors as well
             print errors
             print sum(errors) / len(errors)
             
@@ -481,9 +481,8 @@ def calculate_next_focal_point_from_arc(arc, screen_point, surface_normal_functi
     #    for d in numpy.linspace(72.0, 73.0, 11):
     #        calculate_spot_size(d)
     
-    
     best_dist = scipy.optimize.fminbound(calculate_spot_size, min_dist, max_dist, maxfun=num_iterations, xtol=tolerance, full_output=False, disp=0)
-    focal_point = best_dist * approximate_screen_normal * -1.0 + arc.points[-1]
+    focal_point = focal_points[best_dist]
     print "done. focal point is %s away from the original" % (numpy.linalg.norm(screen_point - focal_point))
     return focal_point
 
@@ -566,6 +565,12 @@ def new_horizontal_arcing(
         rho_end_plane,
         poly_order
         ):
+    
+    def prev_normal_function(point, t=None):
+        point_to_screen_vec = normalize(screen_point - point)
+        surface_normal = normalize(point_to_screen_vec - normalize(shell_point))
+        return surface_normal
+    
     num_slices = 32
     #prev_mu_arc = optics.arc.new_grow_arc(shell_point, screen_point, rho_start_plane, mu_start_plane, mu_end_plane, previous_normal_function=None, falloff=-1.0, poly_order=poly_order, num_slices=num_slices)
     angle_step = mu_end_plane.angle
