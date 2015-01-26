@@ -26,7 +26,8 @@ def new_grow_arc(
     falloff=-1.0,
     step_size=0.01,
     poly_order=None,
-    surface_normal_function=None
+    surface_normal_function=None,
+    num_slices=None
     ):
     """
     Creates an arc through space within the given plane, ending at the end plane. The arc is
@@ -58,6 +59,9 @@ def new_grow_arc(
     :rtype: NewArc
     """
     
+    if num_slices == None:
+        num_slices = optics.globals.NUM_SLICES
+    
     if poly_order == None:
         poly_order = optics.globals.POLY_ORDER
 
@@ -86,7 +90,7 @@ def new_grow_arc(
     arc_poly = create_arc_poly(arc_plane, direction, shell_point, screen_point, points, poly_order)
     
     #find the intersection between that poly and each cross plane
-    cross_arc_slice_angles = numpy.linspace(start_cross_plane.angle, end_cross_plane.angle, optics.globals.NUM_SLICES)[1:]
+    cross_arc_slice_angles = numpy.linspace(start_cross_plane.angle, end_cross_plane.angle, num_slices)[1:]
     if start_cross_plane.mu != None:
         cross_planes = [optics.arcplane.ArcPlane(mu=angle) for angle in cross_arc_slice_angles]
     else:
